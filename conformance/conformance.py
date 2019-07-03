@@ -11,7 +11,6 @@ import subprocess
 import collections
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
-RUNS_ROOT = os.path.join(ROOT, "runs")
 S3TESTS_ROOT = os.path.join(ROOT, "s3-tests")
 
 RAN_PATTERN = re.compile(r"^Ran (\d+) tests in [\d\.]+s")
@@ -51,25 +50,30 @@ def compute_stats(filename):
         return (0, 0)
 
 def run_nosetests(config, test=None, env=None, stderr=None):
+    config = os.path.abspath(config)
+    if not os.path.exists(config):
+        print("config file does not exist: {}".format(config), file=sys.stderr)
+        sys.exit(1)
+
     all_env = dict(os.environ)
     all_env["S3TEST_CONF"] = config
     if env is not None:
         all_env.update(env)
-    
-    cwd = os.path.join("conformance", "s3-tests")
+
+    pwd = os.path.join(ROOT, "s3-tests")
     args = [os.path.join("virtualenv", "bin", "nosetests")]
     if test is not None:
         args.append(test)
 
-    proc = subprocess.run(args, env=all_env, cwd=cwd, stderr=stderr)
+    proc = subprocess.run(args, env=all_env, cwd=pwd, stderr=stderr)
     print("Test run exited with {}".format(proc.returncode))
 
-def print_failures():
-    log_files = sorted(glob.glob(os.path.join(RUNS_ROOT, "*.txt")))
+def print_failures(runs_dir):
+    log_files = sorted(glob.glob(os.path.join(runs_dir, "*.txt")))
 
     if len(log_files) == 0:
         print("No log files found", file=sys.stderr)
-        return 1
+        sys.exit(1)
 
     old_stats = None
     if len(log_files) > 1:
@@ -108,18 +112,18 @@ def print_failures():
         for failing_test in failing_tests:
             print("- {}".format(failing_test))
 
-    return 0
-
 def main():
     parser = argparse.ArgumentParser(description="Runs a conformance test suite.")
     parser.add_argument("--no-run", default=False, action="store_true", help="Disables a test run, and just prints failure data from the last test run")
     parser.add_argument("--test", default="", help="Run a specific test")
     parser.add_argument("--s3tests-config", required=True, help="Path to the s3-tests config file")
     parser.add_argument("--ignore-config", default=None, help="Path to the ignore config file")
+    parser.add_argument("--runs-dir", default=None, help="Path to the directory holding test runs")
     args = parser.parse_args()
 
     if args.no_run:
-        sys.exit(print_failures())
+        print_failures(args.runs_dir)
+        return
 
     if args.test:
         print("Running test {}".format(args.test))
@@ -136,7 +140,7 @@ def main():
 
         run_nosetests(args.s3tests_config, test=test)
     else:
-        print("Running all tests")
+        print("Running tests")
 
         if args.ignore_config:
             # This uses the `nose-exclude` plugin to exclude tests for
@@ -148,7 +152,7 @@ def main():
             with open(args.ignore_config, "r") as f:
                 for line in f:
                     line = line.strip()
-                    if not line.startswith("#"):
+                    if line and not line.startswith("#"):
                         ignores.append(line)
 
             env = {
@@ -157,11 +161,11 @@ def main():
         else:
             env = None
 
-        filepath = os.path.join(RUNS_ROOT, datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S.txt"))
+        filepath = os.path.join(args.runs_dir, datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S.txt"))
         with open(filepath, "w") as f:
             run_nosetests(args.s3tests_config, env=env, stderr=f)
 
-        sys.exit(print_failures())
+        print_failures(args.runs_dir)
                 
 if __name__ == "__main__":
     main()
