@@ -3,6 +3,7 @@ package controllers
 import (
 	"bytes"
 	"crypto/md5"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -15,36 +16,36 @@ type ObjectController struct {
 	DB models.Storage
 }
 
-func (c ObjectController) Get(r *http.Request, name, key string, result *s2.GetObjectResult) *s2.Error {
+func (c ObjectController) Get(r *http.Request, name, key string, result *s2.GetObjectResult) error {
 	c.DB.Lock.RLock()
 	defer c.DB.Lock.RUnlock()
 
-	bucket, s3Err := c.DB.Bucket(r, name)
-	if s3Err != nil {
-		return s3Err
+	bucket, err := c.DB.Bucket(r, name)
+	if err != nil {
+		return err
 	}
 
-	object, s3Err := bucket.Object(r, key)
-	if s3Err != nil {
-		return s3Err
+	object, err := bucket.Object(r, key)
+	if err != nil {
+		return err
 	}
 
 	hash := md5.Sum(object)
 
 	result.Name = key
-	result.Hash = hash[:]
+	result.ETag = fmt.Sprintf("%x", hash)
 	result.ModTime = models.Epoch
 	result.Content = bytes.NewReader(object)
 	return nil
 }
 
-func (c ObjectController) Put(r *http.Request, name, key string, reader io.Reader) *s2.Error {
+func (c ObjectController) Put(r *http.Request, name, key string, reader io.Reader) error {
 	c.DB.Lock.Lock()
 	defer c.DB.Lock.Unlock()
 
-	bucket, s3Err := c.DB.Bucket(r, name)
-	if s3Err != nil {
-		return s3Err
+	bucket, err := c.DB.Bucket(r, name)
+	if err != nil {
+		return err
 	}
 
 	bytes, err := ioutil.ReadAll(reader)
@@ -56,18 +57,18 @@ func (c ObjectController) Put(r *http.Request, name, key string, reader io.Reade
 	return nil
 }
 
-func (c ObjectController) Del(r *http.Request, name, key string) *s2.Error {
+func (c ObjectController) Del(r *http.Request, name, key string) error {
 	c.DB.Lock.Lock()
 	defer c.DB.Lock.Unlock()
 
-	bucket, s3Err := c.DB.Bucket(r, name)
-	if s3Err != nil {
-		return s3Err
+	bucket, err := c.DB.Bucket(r, name)
+	if err != nil {
+		return err
 	}
 
-	_, s3Err = bucket.Object(r, key)
-	if s3Err != nil {
-		return s3Err
+	_, err = bucket.Object(r, key)
+	if err != nil {
+		return err
 	}
 
 	delete(bucket.Objects, key)

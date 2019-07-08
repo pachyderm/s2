@@ -16,14 +16,14 @@ type BucketController struct {
 	DB models.Storage
 }
 
-func (c BucketController) GetLocation(r *http.Request, name string, result *s2.LocationConstraint) *s2.Error {
+func (c BucketController) GetLocation(r *http.Request, name string, result *s2.LocationConstraint) error {
 	result.Location = "pachydermia"
 	return nil
 }
 
 // Lists bucket contents. Note that this doesn't support common prefixes or
 // delimiters.
-func (c BucketController) List(r *http.Request, name string, result *s2.ListBucketResult) *s2.Error {
+func (c BucketController) List(r *http.Request, name string, result *s2.ListBucketResult) error {
 	c.DB.Lock.RLock()
 	defer c.DB.Lock.RUnlock()
 
@@ -31,9 +31,9 @@ func (c BucketController) List(r *http.Request, name string, result *s2.ListBuck
 		return s2.NotImplementedError(r)
 	}
 
-	bucket, s3Err := c.DB.Bucket(r, name)
-	if s3Err != nil {
-		return s3Err
+	bucket, err := c.DB.Bucket(r, name)
+	if err != nil {
+		return err
 	}
 
 	keys := []string{}
@@ -78,7 +78,7 @@ func (c BucketController) List(r *http.Request, name string, result *s2.ListBuck
 	return nil
 }
 
-func (c BucketController) Create(r *http.Request, name string) *s2.Error {
+func (c BucketController) Create(r *http.Request, name string) error {
 	c.DB.Lock.Lock()
 	defer c.DB.Lock.Unlock()
 
@@ -91,13 +91,13 @@ func (c BucketController) Create(r *http.Request, name string) *s2.Error {
 	return nil
 }
 
-func (c BucketController) Delete(r *http.Request, name string) *s2.Error {
+func (c BucketController) Delete(r *http.Request, name string) error {
 	c.DB.Lock.Lock()
 	defer c.DB.Lock.Unlock()
 
-	_, s3Err := c.DB.Bucket(r, name)
-	if s3Err != nil {
-		return s3Err
+	_, err := c.DB.Bucket(r, name)
+	if err != nil {
+		return err
 	}
 	delete(c.DB.Buckets, name)
 	return nil

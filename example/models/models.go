@@ -31,7 +31,7 @@ func NewStorage() Storage {
     }
 }
 
-func (s Storage) Bucket(r *http.Request, name string) (Bucket, *s2.Error) {
+func (s Storage) Bucket(r *http.Request, name string) (Bucket, error) {
     bucket, ok := s.Buckets[name]
     if !ok {
         return NewBucket(), s2.NoSuchBucketError(r)
@@ -49,7 +49,7 @@ func NewBucket() Bucket {
     }
 }
 
-func (b Bucket) Object(r *http.Request, key string) ([]byte, *s2.Error) {
+func (b Bucket) Object(r *http.Request, key string) ([]byte, error) {
     bytes, ok := b.Objects[key]
     if !ok {
         return nil, s2.NoSuchKeyError(r)

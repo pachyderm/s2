@@ -11,7 +11,7 @@ type RootController struct {
 	DB models.Storage
 }
 
-func (c RootController) List(r *http.Request, result *s2.ListAllMyBucketsResult) *s2.Error {
+func (c RootController) List(r *http.Request, result *s2.ListAllMyBucketsResult) error {
 	c.DB.Lock.RLock()
 	defer c.DB.Lock.RUnlock()
 	result.Owner = models.GlobalUser
