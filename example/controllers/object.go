@@ -7,15 +7,15 @@ import (
 	"io/ioutil"
 	"net/http"
 
-	"github.com/pachyderm/s3server"
-	"github.com/pachyderm/s3server/example/models"
+	"github.com/pachyderm/s2"
+	"github.com/pachyderm/s2/example/models"
 )
 
 type ObjectController struct {
 	DB models.Storage
 }
 
-func (c ObjectController) Get(r *http.Request, name, key string, result *s3server.GetObjectResult) *s3server.Error {
+func (c ObjectController) Get(r *http.Request, name, key string, result *s2.GetObjectResult) *s2.Error {
 	c.DB.Lock.RLock()
 	defer c.DB.Lock.RUnlock()
 
@@ -38,7 +38,7 @@ func (c ObjectController) Get(r *http.Request, name, key string, result *s3serve
 	return nil
 }
 
-func (c ObjectController) Put(r *http.Request, name, key string, reader io.Reader) *s3server.Error {
+func (c ObjectController) Put(r *http.Request, name, key string, reader io.Reader) *s2.Error {
 	c.DB.Lock.Lock()
 	defer c.DB.Lock.Unlock()
 
@@ -49,14 +49,14 @@ func (c ObjectController) Put(r *http.Request, name, key string, reader io.Reade
 
 	bytes, err := ioutil.ReadAll(reader)
 	if err != nil {
-		return s3server.InternalError(r, err)
+		return s2.InternalError(r, err)
 	}
 
 	bucket.Objects[key] = bytes
 	return nil
 }
 
-func (c ObjectController) Del(r *http.Request, name, key string) *s3server.Error {
+func (c ObjectController) Del(r *http.Request, name, key string) *s2.Error {
 	c.DB.Lock.Lock()
 	defer c.DB.Lock.Unlock()
 

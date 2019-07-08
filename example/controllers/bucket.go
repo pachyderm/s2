@@ -8,27 +8,27 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/pachyderm/s3server"
-	"github.com/pachyderm/s3server/example/models"
+	"github.com/pachyderm/s2"
+	"github.com/pachyderm/s2/example/models"
 )
 
 type BucketController struct {
 	DB models.Storage
 }
 
-func (c BucketController) GetLocation(r *http.Request, name string, result *s3server.LocationConstraint) *s3server.Error {
+func (c BucketController) GetLocation(r *http.Request, name string, result *s2.LocationConstraint) *s2.Error {
 	result.Location = "pachydermia"
 	return nil
 }
 
 // Lists bucket contents. Note that this doesn't support common prefixes or
 // delimiters.
-func (c BucketController) List(r *http.Request, name string, result *s3server.ListBucketResult) *s3server.Error {
+func (c BucketController) List(r *http.Request, name string, result *s2.ListBucketResult) *s2.Error {
 	c.DB.Lock.RLock()
 	defer c.DB.Lock.RUnlock()
 
 	if result.Delimiter != "" {
-		return s3server.NotImplementedError(r)
+		return s2.NotImplementedError(r)
 	}
 
 	bucket, s3Err := c.DB.Bucket(r, name)
@@ -61,7 +61,7 @@ func (c BucketController) List(r *http.Request, name string, result *s3server.Li
 		contents := bucket.Objects[key]
 		hash := md5.Sum(contents)
 
-		result.Contents = append(result.Contents, s3server.Contents{
+		result.Contents = append(result.Contents, s2.Contents{
 			Key:          key,
 			LastModified: models.Epoch,
 			ETag:         fmt.Sprintf("%x", hash),
@@ -78,20 +78,20 @@ func (c BucketController) List(r *http.Request, name string, result *s3server.Li
 	return nil
 }
 
-func (c BucketController) Create(r *http.Request, name string) *s3server.Error {
+func (c BucketController) Create(r *http.Request, name string) *s2.Error {
 	c.DB.Lock.Lock()
 	defer c.DB.Lock.Unlock()
 
 	_, ok := c.DB.Buckets[name]
 	if ok {
-		return s3server.BucketAlreadyOwnedByYouError(r)
+		return s2.BucketAlreadyOwnedByYouError(r)
 	}
 
 	c.DB.Buckets[name] = models.NewBucket()
 	return nil
 }
 
-func (c BucketController) Delete(r *http.Request, name string) *s3server.Error {
+func (c BucketController) Delete(r *http.Request, name string) *s2.Error {
 	c.DB.Lock.Lock()
 	defer c.DB.Lock.Unlock()
 
