@@ -52,9 +52,9 @@ type CommonPrefixes struct {
 
 type BucketController interface {
 	GetLocation(r *http.Request, bucket string, result *LocationConstraint) error
-	List(r *http.Request, bucket string, result *ListBucketResult) error
-	Create(r *http.Request, bucket string) error
-	Delete(r *http.Request, bucket string) error
+	ListObjects(r *http.Request, bucket string, result *ListBucketResult) error
+	CreateBucket(r *http.Request, bucket string) error
+	DeleteBucket(r *http.Request, bucket string) error
 }
 
 type UnimplementedBucketController struct{}
@@ -63,15 +63,15 @@ func (c UnimplementedBucketController) GetLocation(r *http.Request, bucket strin
 	return NotImplementedError(r)
 }
 
-func (c UnimplementedBucketController) List(r *http.Request, bucket string, result *ListBucketResult) error {
+func (c UnimplementedBucketController) ListObjects(r *http.Request, bucket string, result *ListBucketResult) error {
 	return NotImplementedError(r)
 }
 
-func (c UnimplementedBucketController) Create(r *http.Request, bucket string) error {
+func (c UnimplementedBucketController) CreateBucket(r *http.Request, bucket string) error {
 	return NotImplementedError(r)
 }
 
-func (c UnimplementedBucketController) Delete(r *http.Request, bucket string) error {
+func (c UnimplementedBucketController) DeleteBucket(r *http.Request, bucket string) error {
 	return NotImplementedError(r)
 }
 
@@ -118,7 +118,7 @@ func (h bucketHandler) get(w http.ResponseWriter, r *http.Request) {
 		IsTruncated: false,
 	}
 
-	if err := h.controller.List(r, bucket, result); err != nil {
+	if err := h.controller.ListObjects(r, bucket, result); err != nil {
 		writeError(h.logger, r, w, err)
 		return
 	}
@@ -147,7 +147,7 @@ func (h bucketHandler) put(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	bucket := vars["bucket"]
 
-	if err := h.controller.Create(r, bucket); err != nil {
+	if err := h.controller.CreateBucket(r, bucket); err != nil {
 		writeError(h.logger, r, w, err)
 		return
 	}
@@ -159,7 +159,7 @@ func (h bucketHandler) del(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	bucket := vars["bucket"]
 
-	if err := h.controller.Delete(r, bucket); err != nil {
+	if err := h.controller.DeleteBucket(r, bucket); err != nil {
 		writeError(h.logger, r, w, err)
 		return
 	}

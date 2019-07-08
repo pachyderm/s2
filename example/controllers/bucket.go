@@ -12,18 +12,14 @@ import (
 	"github.com/pachyderm/s2/example/models"
 )
 
-type BucketController struct {
-	DB models.Storage
-}
-
-func (c BucketController) GetLocation(r *http.Request, name string, result *s2.LocationConstraint) error {
+func (c Controller) GetLocation(r *http.Request, name string, result *s2.LocationConstraint) error {
 	result.Location = "pachydermia"
 	return nil
 }
 
 // Lists bucket contents. Note that this doesn't support common prefixes or
 // delimiters.
-func (c BucketController) List(r *http.Request, name string, result *s2.ListBucketResult) error {
+func (c Controller) ListObjects(r *http.Request, name string, result *s2.ListBucketResult) error {
 	c.DB.Lock.RLock()
 	defer c.DB.Lock.RUnlock()
 
@@ -78,7 +74,7 @@ func (c BucketController) List(r *http.Request, name string, result *s2.ListBuck
 	return nil
 }
 
-func (c BucketController) Create(r *http.Request, name string) error {
+func (c Controller) CreateBucket(r *http.Request, name string) error {
 	c.DB.Lock.Lock()
 	defer c.DB.Lock.Unlock()
 
@@ -91,7 +87,7 @@ func (c BucketController) Create(r *http.Request, name string) error {
 	return nil
 }
 
-func (c BucketController) Delete(r *http.Request, name string) error {
+func (c Controller) DeleteBucket(r *http.Request, name string) error {
 	c.DB.Lock.Lock()
 	defer c.DB.Lock.Unlock()
 

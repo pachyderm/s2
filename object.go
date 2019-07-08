@@ -21,22 +21,22 @@ type GetObjectResult struct {
 }
 
 type ObjectController interface {
-	Get(r *http.Request, bucket, key string, result *GetObjectResult) error
-	Put(r *http.Request, bucket, key string, reader io.Reader) error
-	Del(r *http.Request, bucket, key string) error
+	GetObject(r *http.Request, bucket, key string, result *GetObjectResult) error
+	PutObject(r *http.Request, bucket, key string, reader io.Reader) error
+	DeleteObject(r *http.Request, bucket, key string) error
 }
 
 type UnimplementedObjectController struct{}
 
-func (c UnimplementedObjectController) Get(r *http.Request, bucket, key string, result *GetObjectResult) error {
+func (c UnimplementedObjectController) GetObject(r *http.Request, bucket, key string, result *GetObjectResult) error {
 	return NotImplementedError(r)
 }
 
-func (c UnimplementedObjectController) Put(r *http.Request, bucket, key string, reader io.Reader) error {
+func (c UnimplementedObjectController) PutObject(r *http.Request, bucket, key string, reader io.Reader) error {
 	return NotImplementedError(r)
 }
 
-func (c UnimplementedObjectController) Del(r *http.Request, bucket, key string) error {
+func (c UnimplementedObjectController) DeleteObject(r *http.Request, bucket, key string) error {
 	return NotImplementedError(r)
 }
 
@@ -52,7 +52,7 @@ func (h *objectHandler) get(w http.ResponseWriter, r *http.Request) {
 
 	result := &GetObjectResult{}
 
-	if err := h.controller.Get(r, bucket, key, result); err != nil {
+	if err := h.controller.GetObject(r, bucket, key, result); err != nil {
 		writeError(h.logger, r, w, err)
 		return
 	}
@@ -82,7 +82,7 @@ func (h *objectHandler) put(w http.ResponseWriter, r *http.Request) {
 
 	hasher := md5.New()
 	reader := io.TeeReader(r.Body, hasher)
-	if err := h.controller.Put(r, bucket, key, reader); err != nil {
+	if err := h.controller.PutObject(r, bucket, key, reader); err != nil {
 		writeError(h.logger, r, w, err)
 		return
 	}
@@ -92,7 +92,7 @@ func (h *objectHandler) put(w http.ResponseWriter, r *http.Request) {
 		BadDigestError(r).Write(h.logger, w)
 
 		// try to clean up the file
-		if err := h.controller.Del(r, bucket, key); err != nil {
+		if err := h.controller.DeleteObject(r, bucket, key); err != nil {
 			h.logger.Errorf("could not clean up file after an error: %+v", err)
 		}
 
@@ -108,7 +108,7 @@ func (h *objectHandler) del(w http.ResponseWriter, r *http.Request) {
 	bucket := vars["bucket"]
 	key := vars["key"]
 
-	if err := h.controller.Del(r, bucket, key); err != nil {
+	if err := h.controller.DeleteObject(r, bucket, key); err != nil {
 		writeError(h.logger, r, w, err)
 		return
 	}

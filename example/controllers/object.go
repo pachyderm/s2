@@ -12,11 +12,7 @@ import (
 	"github.com/pachyderm/s2/example/models"
 )
 
-type ObjectController struct {
-	DB models.Storage
-}
-
-func (c ObjectController) Get(r *http.Request, name, key string, result *s2.GetObjectResult) error {
+func (c Controller) GetObject(r *http.Request, name, key string, result *s2.GetObjectResult) error {
 	c.DB.Lock.RLock()
 	defer c.DB.Lock.RUnlock()
 
@@ -39,7 +35,7 @@ func (c ObjectController) Get(r *http.Request, name, key string, result *s2.GetO
 	return nil
 }
 
-func (c ObjectController) Put(r *http.Request, name, key string, reader io.Reader) error {
+func (c Controller) PutObject(r *http.Request, name, key string, reader io.Reader) error {
 	c.DB.Lock.Lock()
 	defer c.DB.Lock.Unlock()
 
@@ -57,7 +53,7 @@ func (c ObjectController) Put(r *http.Request, name, key string, reader io.Reade
 	return nil
 }
 
-func (c ObjectController) Del(r *http.Request, name, key string) error {
+func (c Controller) DeleteObject(r *http.Request, name, key string) error {
 	c.DB.Lock.Lock()
 	defer c.DB.Lock.Unlock()
 

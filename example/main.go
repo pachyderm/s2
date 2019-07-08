@@ -18,10 +18,12 @@ func main() {
 		"source": "s2-example",
 	})
 
+	controller := controllers.NewController(db)
+
 	s3 := s2.NewS2()
-	s3.Root = controllers.RootController{DB: db}
-	s3.Bucket = controllers.BucketController{DB: db}
-	s3.Object = controllers.ObjectController{DB: db}
+	s3.Root = controller
+	s3.Bucket = controller
+	s3.Object = controller
 
 	router := s3.Router(logger)
 
