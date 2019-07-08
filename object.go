@@ -15,7 +15,7 @@ import (
 
 type GetObjectResult struct {
 	Name    string
-	Hash    []byte
+	ETag    string
 	ModTime time.Time
 	Content io.ReadSeeker
 }
@@ -57,9 +57,10 @@ func (h *objectHandler) get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if result.Hash != nil {
-		w.Header().Set("ETag", fmt.Sprintf("\"%x\"", result.Hash))
+	if result.ETag != "" {
+		w.Header().Set("ETag", fmt.Sprintf("\"%s\"", result.ETag))
 	}
+
 	http.ServeContent(w, r, result.Name, result.ModTime, result.Content)
 }
 

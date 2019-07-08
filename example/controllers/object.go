@@ -3,6 +3,7 @@ package controllers
 import (
 	"bytes"
 	"crypto/md5"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -32,7 +33,7 @@ func (c ObjectController) Get(r *http.Request, name, key string, result *s2.GetO
 	hash := md5.Sum(object)
 
 	result.Name = key
-	result.Hash = hash[:]
+	result.ETag = fmt.Sprintf("%x", hash)
 	result.ModTime = models.Epoch
 	result.Content = bytes.NewReader(object)
 	return nil
