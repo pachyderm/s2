@@ -18,7 +18,7 @@ func main() {
 		"source": "s2-example",
 	})
 
-	s3 := s2.NewS3()
+	s3 := s2.NewS2()
 	s3.Root = controllers.RootController{DB: db}
 	s3.Bucket = controllers.BucketController{DB: db}
 	s3.Object = controllers.ObjectController{DB: db}
