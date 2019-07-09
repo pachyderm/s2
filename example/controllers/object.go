@@ -29,7 +29,7 @@ func (c Controller) GetObject(r *http.Request, name, key string, result *s2.GetO
 	hash := md5.Sum(object)
 
 	result.Name = key
-	result.ETag = fmt.Sprintf("%x", hash)
+	result.ETag = fmt.Sprintf("\"%x\"", hash)
 	result.ModTime = models.Epoch
 	result.Content = bytes.NewReader(object)
 	return nil

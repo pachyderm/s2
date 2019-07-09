@@ -1,9 +1,6 @@
 package s2
 
 import (
-	"bytes"
-	"crypto/md5"
-	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,10 +11,10 @@ import (
 )
 
 type GetObjectResult struct {
-	Name    string
-	ETag    string
-	ModTime time.Time
-	Content io.ReadSeeker
+	Name    string        `xml:"Name"`
+	ETag    string        `xml:"ETag"`
+	ModTime time.Time     `xml:"ModTime"`
+	Content io.ReadSeeker `xml:"Content"`
 }
 
 type ObjectController interface {
@@ -58,7 +55,7 @@ func (h *objectHandler) get(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if result.ETag != "" {
-		w.Header().Set("ETag", fmt.Sprintf("\"%s\"", result.ETag))
+		w.Header().Set("ETag", result.ETag)
 	}
 
 	http.ServeContent(w, r, result.Name, result.ModTime, result.Content)
@@ -69,38 +66,23 @@ func (h *objectHandler) put(w http.ResponseWriter, r *http.Request) {
 	bucket := vars["bucket"]
 	key := vars["key"]
 
-	expectedHash, ok := r.Header["Content-Md5"]
-	var expectedHashBytes []uint8
-	var err error
-	if ok && len(expectedHash) == 1 {
-		expectedHashBytes, err = base64.StdEncoding.DecodeString(expectedHash[0])
-		if err != nil || len(expectedHashBytes) != 16 {
-			InvalidDigestError(r).Write(h.logger, w)
-			return
-		}
-	}
+	hashBytes, shouldCleanup, err := withBodyReader(r, func(reader io.Reader) error {
+		return h.controller.PutObject(r, bucket, key, reader)
+	})
 
-	hasher := md5.New()
-	reader := io.TeeReader(r.Body, hasher)
-	if err := h.controller.PutObject(r, bucket, key, reader); err != nil {
-		writeError(h.logger, r, w, err)
-		return
-	}
-
-	actualHashBytes := hasher.Sum(nil)
-	if expectedHashBytes != nil && !bytes.Equal(expectedHashBytes, actualHashBytes) {
-		BadDigestError(r).Write(h.logger, w)
-
+	if shouldCleanup {
 		// try to clean up the file
 		if err := h.controller.DeleteObject(r, bucket, key); err != nil {
 			h.logger.Errorf("could not clean up file after an error: %+v", err)
 		}
-
-		return
 	}
 
-	w.Header().Set("ETag", fmt.Sprintf("\"%x\"", actualHashBytes))
-	w.WriteHeader(http.StatusOK)
+	if err != nil {
+		writeError(h.logger, r, w, err)
+	} else {
+		w.Header().Set("ETag", fmt.Sprintf("\"%x\"", hashBytes))
+		w.WriteHeader(http.StatusOK)
+	}
 }
 
 func (h *objectHandler) del(w http.ResponseWriter, r *http.Request) {

@@ -67,10 +67,6 @@ func (c Controller) ListObjects(r *http.Request, name string, result *s2.ListBuc
 		})
 	}
 
-	if result.IsTruncated && len(result.Contents) > 0 {
-		result.NextMarker = result.Contents[len(result.Contents)-1].Key
-	}
-
 	return nil
 }
 

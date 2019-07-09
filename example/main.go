@@ -24,6 +24,7 @@ func main() {
 	s3.Root = controller
 	s3.Bucket = controller
 	s3.Object = controller
+	s3.Multipart = controller
 
 	router := s3.Router(logger)
 

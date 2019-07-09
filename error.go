@@ -64,6 +64,14 @@ func InvalidDigestError(r *http.Request) *Error {
 	return NewError(r, http.StatusBadRequest, "InvalidDigest", "The Content-MD5 you specified is not valid.")
 }
 
+func InvalidPartError(r *http.Request) *Error {
+	return NewError(r, http.StatusBadRequest, "InvalidPart", "One or more of the specified parts could not be found. The part might not have been uploaded, or the specified entity tag might not have matched the part's entity tag.")
+}
+
+func InvalidPartOrderError(w http.ResponseWriter, r *http.Request) *Error {
+	return NewError(r, http.StatusBadRequest, "InvalidPartOrder", "The list of parts was not in ascending order. Parts list must be specified in order by part number.")
+}
+
 func MalformedXMLError(r *http.Request) *Error {
 	return NewError(r, http.StatusBadRequest, "MalformedXML", "The XML you provided was not well-formed or would not validate against S3's published schema.")
 }
@@ -78,6 +86,10 @@ func NoSuchBucketError(r *http.Request) *Error {
 
 func NoSuchKeyError(r *http.Request) *Error {
 	return NewError(r, http.StatusNotFound, "NoSuchKey", "The specified key does not exist.")
+}
+
+func NoSuchUploadError(r *http.Request) *Error {
+	return NewError(r, http.StatusNotFound, "NoSuchUpload", "The specified multipart upload does not exist. The upload ID might be invalid, or the multipart upload might have been aborted or completed.")
 }
 
 func NotImplementedError(r *http.Request) *Error {

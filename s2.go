@@ -10,7 +10,7 @@ import (
 
 var bucketNameValidator = regexp.MustCompile(`^/[a-zA-Z0-9\-_\.]{1,255}/`)
 
-func attachBucketRoutes(logger *logrus.Entry, router *mux.Router, handler *bucketHandler) {
+func attachBucketRoutes(logger *logrus.Entry, router *mux.Router, handler *bucketHandler, multipartHandler *multipartHandler) {
 	router.Methods("GET", "PUT").Queries("accelerate", "").HandlerFunc(NotImplementedEndpoint(logger))
 	router.Methods("GET", "PUT").Queries("acl", "").HandlerFunc(NotImplementedEndpoint(logger))
 	router.Methods("GET", "PUT", "DELETE").Queries("analytics", "").HandlerFunc(NotImplementedEndpoint(logger))
@@ -28,19 +28,19 @@ func attachBucketRoutes(logger *logrus.Entry, router *mux.Router, handler *bucke
 	router.Methods("PUT", "DELETE").Queries("replication", "").HandlerFunc(NotImplementedEndpoint(logger))
 	router.Methods("GET", "PUT").Queries("requestPayment", "").HandlerFunc(NotImplementedEndpoint(logger))
 	router.Methods("GET", "PUT", "DELETE").Queries("tagging", "").HandlerFunc(NotImplementedEndpoint(logger))
-	router.Methods("GET").Queries("uploads", "").HandlerFunc(NotImplementedEndpoint(logger))
 	router.Methods("GET", "PUT").Queries("versioning", "").HandlerFunc(NotImplementedEndpoint(logger))
 	router.Methods("GET").Queries("versions", "").HandlerFunc(NotImplementedEndpoint(logger))
 	router.Methods("GET", "PUT", "DELETE").Queries("website", "").HandlerFunc(NotImplementedEndpoint(logger))
 	router.Methods("POST").HandlerFunc(NotImplementedEndpoint(logger))
 
+	router.Methods("GET").Queries("uploads", "").HandlerFunc(multipartHandler.list)
 	router.Methods("GET", "HEAD").Queries("location", "").HandlerFunc(handler.location)
 	router.Methods("GET", "HEAD").HandlerFunc(handler.get)
 	router.Methods("PUT").HandlerFunc(handler.put)
 	router.Methods("DELETE").HandlerFunc(handler.del)
 }
 
-func attachObjectRoutes(logger *logrus.Entry, router *mux.Router, handler *objectHandler) {
+func attachObjectRoutes(logger *logrus.Entry, router *mux.Router, handler *objectHandler, multipartHandler *multipartHandler) {
 	router.Methods("GET", "PUT").Queries("acl", "").HandlerFunc(NotImplementedEndpoint(logger))
 	router.Methods("GET", "PUT").Queries("legal-hold", "").HandlerFunc(NotImplementedEndpoint(logger))
 	router.Methods("GET", "PUT").Queries("retention", "").HandlerFunc(NotImplementedEndpoint(logger))
@@ -49,28 +49,30 @@ func attachObjectRoutes(logger *logrus.Entry, router *mux.Router, handler *objec
 	router.Methods("POST").Queries("restore", "").HandlerFunc(NotImplementedEndpoint(logger))
 	router.Methods("POST").Queries("select", "").HandlerFunc(NotImplementedEndpoint(logger))
 	router.Methods("PUT").Headers("x-amz-copy-source", "").HandlerFunc(NotImplementedEndpoint(logger))
-	router.Methods("GET", "HEAD").Queries("uploadId", "").HandlerFunc(NotImplementedEndpoint(logger))
-	router.Methods("POST").Queries("uploads", "").HandlerFunc(NotImplementedEndpoint(logger))
-	router.Methods("POST").Queries("uploadId", "").HandlerFunc(NotImplementedEndpoint(logger))
-	router.Methods("PUT").Queries("uploadId", "").HandlerFunc(NotImplementedEndpoint(logger))
-	router.Methods("DELETE").Queries("uploadId", "").HandlerFunc(NotImplementedEndpoint(logger))
 
+	router.Methods("GET", "HEAD").Queries("uploadId", "").HandlerFunc(multipartHandler.listChunks)
+	router.Methods("POST").Queries("uploads", "").HandlerFunc(multipartHandler.init)
+	router.Methods("POST").Queries("uploadId", "").HandlerFunc(multipartHandler.complete)
+	router.Methods("PUT").Queries("uploadId", "").HandlerFunc(multipartHandler.put)
+	router.Methods("DELETE").Queries("uploadId", "").HandlerFunc(multipartHandler.del)
 	router.Methods("GET", "HEAD").HandlerFunc(handler.get)
 	router.Methods("PUT").HandlerFunc(handler.put)
 	router.Methods("DELETE").HandlerFunc(handler.del)
 }
 
 type S2 struct {
-	Root   RootController
-	Bucket BucketController
-	Object ObjectController
+	Root      RootController
+	Bucket    BucketController
+	Object    ObjectController
+	Multipart MultipartController
 }
 
 func NewS2() *S2 {
 	return &S2{
-		Root:   UnimplementedRootController{},
-		Bucket: UnimplementedBucketController{},
-		Object: UnimplementedObjectController{},
+		Root:      UnimplementedRootController{},
+		Bucket:    UnimplementedBucketController{},
+		Object:    UnimplementedObjectController{},
+		Multipart: UnimplementedMultipartController{},
 	}
 }
 
@@ -87,6 +89,10 @@ func (h *S2) Router(logger *logrus.Entry) *mux.Router {
 		controller: h.Object,
 		logger:     logger,
 	}
+	multipartHandler := &multipartHandler{
+		controller: h.Multipart,
+		logger:     logger,
+	}
 
 	router := mux.NewRouter()
 	router.Path(`/`).Methods("GET", "HEAD").HandlerFunc(rootHandler.get)
@@ -98,13 +104,13 @@ func (h *S2) Router(logger *logrus.Entry) *mux.Router {
 	// slash" functionality, because that uses redirects which doesn't always
 	// play nice with s3 clients.
 	trailingSlashBucketRouter := router.Path(`/{bucket:[a-zA-Z0-9\-_\.]{1,255}}/`).Subrouter()
-	attachBucketRoutes(logger, trailingSlashBucketRouter, bucketHandler)
+	attachBucketRoutes(logger, trailingSlashBucketRouter, bucketHandler, multipartHandler)
 	bucketRouter := router.Path(`/{bucket:[a-zA-Z0-9\-_\.]{1,255}}`).Subrouter()
-	attachBucketRoutes(logger, bucketRouter, bucketHandler)
+	attachBucketRoutes(logger, bucketRouter, bucketHandler, multipartHandler)
 
 	// Object-related routes
 	objectRouter := router.Path(`/{bucket:[a-zA-Z0-9\-_\.]{1,255}}/{key:.+}`).Subrouter()
-	attachObjectRoutes(logger, objectRouter, objectHandler)
+	attachObjectRoutes(logger, objectRouter, objectHandler, multipartHandler)
 
 	router.MethodNotAllowedHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		logger.Infof("method not allowed: %s %s", r.Method, r.URL.Path)

@@ -2,7 +2,6 @@ package s2
 
 import (
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -98,15 +97,10 @@ func (h bucketHandler) get(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	bucket := vars["bucket"]
 
-	maxKeys := defaultMaxKeys
-	maxKeysStr := r.FormValue("max-keys")
-	if maxKeysStr != "" {
-		i, err := strconv.Atoi(maxKeysStr)
-		if err != nil || i < 0 || i > defaultMaxKeys {
-			InvalidArgument(r).Write(h.logger, w)
-			return
-		}
-		maxKeys = i
+	maxKeys, err := intFormValue(r, "max-keys", 0, defaultMaxKeys, defaultMaxKeys)
+	if err != nil {
+		writeError(h.logger, r, w, err)
+		return
 	}
 
 	result := &ListBucketResult{
