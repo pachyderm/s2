@@ -24,6 +24,20 @@ TRACEBACK_PREFIXES = [
     "  ",
 ]
 
+# Ignore tests with these attributes. They're ignored because s2 itself
+# doesn't support this functionality.
+BLACKLISTED_ATTRIBUTES = [
+    "list-objects-v2",
+    "versioning",
+    "cors",
+    "lifecycle",
+    "encryption",
+    "bucket-policy",
+    "tagging",
+    "object-lock",
+    "appendobject",
+]
+
 def compute_stats(filename):
     ran = 0
     skipped = 0
@@ -61,7 +75,7 @@ def run_nosetests(config, test=None, env=None, stderr=None):
         all_env.update(env)
 
     pwd = os.path.join(ROOT, "s3-tests")
-    args = [os.path.join("virtualenv", "bin", "nosetests")]
+    args = [os.path.join("virtualenv", "bin", "nosetests"), "-a", ",".join("!{}".format(a) for a in BLACKLISTED_ATTRIBUTES)]
     if test is not None:
         args.append(test)
 
@@ -118,7 +132,7 @@ def main():
     parser.add_argument("--test", default="", help="Run a specific test")
     parser.add_argument("--s3tests-config", required=True, help="Path to the s3-tests config file")
     parser.add_argument("--ignore-config", default=None, help="Path to the ignore config file")
-    parser.add_argument("--runs-dir", default=None, help="Path to the directory holding test runs")
+    parser.add_argument("--runs-dir", required=True, help="Path to the directory holding test runs")
     args = parser.parse_args()
 
     if args.no_run:
