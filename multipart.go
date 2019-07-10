@@ -284,6 +284,7 @@ func (h *multipartHandler) complete(w http.ResponseWriter, r *http.Request) {
 			} else {
 				writeXMLBody(h.logger, w, result)
 			}
+			return
 		case <-time.After(completeMultipartPing):
 			fmt.Fprint(w, " ")
 		}
