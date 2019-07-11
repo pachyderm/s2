@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -253,6 +254,12 @@ func (h *multipartHandler) complete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	for _, part := range payload.Parts {
+		if strings.HasPrefix(part.ETag, "\"") && strings.HasSuffix(part.ETag, "\"") {
+			part.ETag = strings.Trim(part.ETag, "\"")
+		}
+	}
+
 	result := &CompleteMultipartUploadResult{
 		Bucket: bucket,
 		Key:    key,
@@ -282,6 +289,10 @@ func (h *multipartHandler) complete(w http.ResponseWriter, r *http.Request) {
 
 				writeXMLBody(h.logger, w, s3Error)
 			} else {
+				if !strings.HasPrefix(result.ETag, "\"") {
+					result.ETag = fmt.Sprintf("\"%s\"", result.ETag)
+				}
+
 				writeXMLBody(h.logger, w, result)
 			}
 			return

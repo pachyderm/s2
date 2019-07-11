@@ -13,6 +13,8 @@ import (
 )
 
 func (c Controller) GetObject(r *http.Request, name, key string, result *s2.GetObjectResult) error {
+	c.logger.Tracef("GetObject: name=%+v, key=%+v, result=%+v", name, key, result)
+
 	c.DB.Lock.RLock()
 	defer c.DB.Lock.RUnlock()
 
@@ -29,13 +31,15 @@ func (c Controller) GetObject(r *http.Request, name, key string, result *s2.GetO
 	hash := md5.Sum(object)
 
 	result.Name = key
-	result.ETag = fmt.Sprintf("\"%x\"", hash)
+	result.ETag = fmt.Sprintf("%x", hash)
 	result.ModTime = models.Epoch
 	result.Content = bytes.NewReader(object)
 	return nil
 }
 
 func (c Controller) PutObject(r *http.Request, name, key string, reader io.Reader) error {
+	c.logger.Tracef("PutObject: name=%+v, key=%+v", name, key)
+
 	c.DB.Lock.Lock()
 	defer c.DB.Lock.Unlock()
 
@@ -54,6 +58,8 @@ func (c Controller) PutObject(r *http.Request, name, key string, reader io.Reade
 }
 
 func (c Controller) DeleteObject(r *http.Request, name, key string) error {
+	c.logger.Tracef("DeleteObject: name=%+v, key=%+v", name, key)
+
 	c.DB.Lock.Lock()
 	defer c.DB.Lock.Unlock()
 

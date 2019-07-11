@@ -24,6 +24,8 @@ func randomString(n int) string {
 }
 
 func (c Controller) ListMultipart(r *http.Request, name string, result *s2.ListMultipartUploadsResult) error {
+	c.logger.Tracef("ListMultipart: name=%+v, result=%+v", name, result)
+
 	c.DB.Lock.RLock()
 	defer c.DB.Lock.RUnlock()
 
@@ -75,6 +77,7 @@ func (c Controller) ListMultipart(r *http.Request, name string, result *s2.ListM
 }
 
 func (c Controller) InitMultipart(r *http.Request, name, key string) (string, error) {
+	c.logger.Tracef("InitMultipart: name=%+v, key=%+v", name, key)
 	uploadID := randomString(10)
 
 	c.DB.Lock.Lock()
@@ -91,6 +94,7 @@ func (c Controller) InitMultipart(r *http.Request, name, key string) (string, er
 }
 
 func (c Controller) AbortMultipart(r *http.Request, name, key, uploadID string) error {
+	c.logger.Tracef("AbortMultipart: name=%+v, key=%+v, uploadID=%+v", name, key, uploadID)
 	c.DB.Lock.Lock()
 	defer c.DB.Lock.Unlock()
 
@@ -109,6 +113,8 @@ func (c Controller) AbortMultipart(r *http.Request, name, key, uploadID string) 
 }
 
 func (c Controller) CompleteMultipart(r *http.Request, name, key, uploadID string, parts []s2.Part, result *s2.CompleteMultipartUploadResult) error {
+	c.logger.Tracef("CompleteMultipart: name=%+v, key=%+v, uploadID=%+v, parts=%+v, result=%+v", name, key, uploadID, parts, result)
+
 	c.DB.Lock.Lock()
 	defer c.DB.Lock.Unlock()
 
@@ -130,7 +136,7 @@ func (c Controller) CompleteMultipart(r *http.Request, name, key, uploadID strin
 			return s2.InvalidPartError(r)
 		}
 
-		if fmt.Sprintf("\"%x\"", md5.Sum(chunk)) != part.ETag {
+		if fmt.Sprintf("%x", md5.Sum(chunk)) != part.ETag {
 			// TODO: is this the correct error to return?
 			return s2.BadDigestError(r)
 		}
@@ -145,6 +151,8 @@ func (c Controller) CompleteMultipart(r *http.Request, name, key, uploadID strin
 }
 
 func (c Controller) ListMultipartChunks(r *http.Request, name, key, uploadID string, result *s2.ListPartsResult) error {
+	c.logger.Tracef("ListMultipartChunks: name=%+v, key=%+v, uploadID=%+v, result=%+v", name, key, uploadID, result)
+
 	c.DB.Lock.RLock()
 	defer c.DB.Lock.RUnlock()
 
@@ -183,7 +191,7 @@ func (c Controller) ListMultipartChunks(r *http.Request, name, key, uploadID str
 
 		result.Parts = append(result.Parts, s2.Part{
 			PartNumber: key,
-			ETag:       fmt.Sprintf("\"%x\"", md5.Sum(multipart[key])),
+			ETag:       fmt.Sprintf("%x", md5.Sum(multipart[key])),
 		})
 	}
 
@@ -191,6 +199,8 @@ func (c Controller) ListMultipartChunks(r *http.Request, name, key, uploadID str
 }
 
 func (c Controller) UploadMultipartChunk(r *http.Request, name, key, uploadID string, partNumber int, reader io.Reader) error {
+	c.logger.Tracef("UploadMultipartChunk: name=%+v, key=%+v, uploadID=%+v partNumber=%+v", name, key, uploadID, partNumber)
+
 	bytes, err := ioutil.ReadAll(reader)
 	if err != nil {
 		return s2.InternalError(r, err)
@@ -214,6 +224,8 @@ func (c Controller) UploadMultipartChunk(r *http.Request, name, key, uploadID st
 }
 
 func (c Controller) DeleteMultipartChunk(r *http.Request, name, key, uploadID string, partNumber int) error {
+	c.logger.Tracef("DeleteMultipartChunk: name=%+v, key=%+v, uploadID=%+v partNumber=%+v", name, key, uploadID, partNumber)
+
 	c.DB.Lock.Lock()
 	defer c.DB.Lock.Unlock()
 

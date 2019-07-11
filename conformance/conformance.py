@@ -132,8 +132,12 @@ def main():
     parser.add_argument("--test", default="", help="Run a specific test")
     parser.add_argument("--s3tests-config", required=True, help="Path to the s3-tests config file")
     parser.add_argument("--ignore-config", default=None, help="Path to the ignore config file")
-    parser.add_argument("--runs-dir", required=True, help="Path to the directory holding test runs")
+    parser.add_argument("--runs-dir", default=None, help="Path to the directory holding test runs")
     args = parser.parse_args()
+
+    if (not args.runs_dir) and (args.no_run or not args.test):
+        print("Must specify `--runs-dir`", file=sys.stderr)
+        sys.exit(1)
 
     if args.no_run:
         print_failures(args.runs_dir)

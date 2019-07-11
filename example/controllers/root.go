@@ -8,6 +8,8 @@ import (
 )
 
 func (c Controller) ListBuckets(r *http.Request, result *s2.ListAllMyBucketsResult) error {
+	c.logger.Tracef("ListBuckets: %+v", result)
+
 	c.DB.Lock.RLock()
 	defer c.DB.Lock.RUnlock()
 	result.Owner = models.GlobalUser

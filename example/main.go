@@ -14,11 +14,12 @@ import (
 func main() {
 	db := models.NewStorage()
 
+	logrus.SetLevel(logrus.TraceLevel)
 	logger := logrus.WithFields(logrus.Fields{
 		"source": "s2-example",
 	})
 
-	controller := controllers.NewController(db)
+	controller := controllers.NewController(db, logger)
 
 	s3 := s2.NewS2()
 	s3.Root = controller
@@ -31,7 +32,7 @@ func main() {
 	server := &http.Server{
 		Addr: ":8080",
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			logger.Infof("http request: %s %s", r.Method, r.RequestURI)
+			logger.Infof("%s %s", r.Method, r.RequestURI)
 			router.ServeHTTP(w, r)
 		}),
 		ErrorLog:     stdlog.New(logger.Writer(), "", 0),

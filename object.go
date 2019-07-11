@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -55,6 +56,10 @@ func (h *objectHandler) get(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if result.ETag != "" {
+		if !strings.HasPrefix(result.ETag, "\"") {
+			result.ETag = fmt.Sprintf("\"%s\"", result.ETag)
+		}
+
 		w.Header().Set("ETag", result.ETag)
 	}
 
