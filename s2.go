@@ -114,15 +114,15 @@ func (h *S2) Router(logger *logrus.Entry) *mux.Router {
 
 	router.MethodNotAllowedHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		logger.Infof("method not allowed: %s %s", r.Method, r.URL.Path)
-		MethodNotAllowedError(r).Write(logger, w)
+		writeError(logger, r, w, MethodNotAllowedError(r))
 	})
 
 	router.NotFoundHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		logger.Infof("not found: %s", r.URL.Path)
 		if bucketNameValidator.MatchString(r.URL.Path) {
-			NoSuchKeyError(r).Write(logger, w)
+			writeError(logger, r, w, NoSuchKeyError(r))
 		} else {
-			InvalidBucketNameError(r).Write(logger, w)
+			writeError(logger, r, w, InvalidBucketNameError(r))
 		}
 	})
 

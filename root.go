@@ -42,5 +42,5 @@ func (h *rootHandler) get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeXML(h.logger, w, r, http.StatusOK, result)
+	writeXML(h.logger, r, w, http.StatusOK, result)
 }

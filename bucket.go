@@ -90,7 +90,7 @@ func (h bucketHandler) location(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeXML(h.logger, w, r, http.StatusOK, result)
+	writeXML(h.logger, r, w, http.StatusOK, result)
 }
 
 func (h bucketHandler) get(w http.ResponseWriter, r *http.Request) {
@@ -134,7 +134,7 @@ func (h bucketHandler) get(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	writeXML(h.logger, w, r, http.StatusOK, result)
+	writeXML(h.logger, r, w, http.StatusOK, result)
 }
 
 func (h bucketHandler) put(w http.ResponseWriter, r *http.Request) {

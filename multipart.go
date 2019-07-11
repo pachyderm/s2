@@ -165,7 +165,7 @@ func (h *multipartHandler) list(w http.ResponseWriter, r *http.Request) {
 		result.NextUploadIDMarker = result.Uploads[len(result.Uploads)-1].UploadID
 	}
 
-	writeXML(h.logger, w, r, http.StatusOK, result)
+	writeXML(h.logger, r, w, http.StatusOK, result)
 }
 
 func (h *multipartHandler) listChunks(w http.ResponseWriter, r *http.Request) {
@@ -202,7 +202,7 @@ func (h *multipartHandler) listChunks(w http.ResponseWriter, r *http.Request) {
 		result.NextPartNumberMarker = result.Parts[len(result.Parts)-1].PartNumber
 	}
 
-	writeXML(h.logger, w, r, http.StatusOK, result)
+	writeXML(h.logger, r, w, http.StatusOK, result)
 }
 
 func (h *multipartHandler) init(w http.ResponseWriter, r *http.Request) {
@@ -222,7 +222,7 @@ func (h *multipartHandler) init(w http.ResponseWriter, r *http.Request) {
 		UploadID: uploadID,
 	}
 
-	writeXML(h.logger, w, r, http.StatusOK, result)
+	writeXML(h.logger, r, w, http.StatusOK, result)
 }
 
 func (h *multipartHandler) complete(w http.ResponseWriter, r *http.Request) {

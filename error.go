@@ -3,8 +3,6 @@ package s2
 import (
 	"fmt"
 	"net/http"
-
-	"github.com/sirupsen/logrus"
 )
 
 // Error is an XML-encodable error response
@@ -30,10 +28,6 @@ func NewError(r *http.Request, httpStatus int, code string, message string) *Err
 
 func (e *Error) Error() string {
 	return fmt.Sprintf("[%s] %s", e.Code, e.Message)
-}
-
-func (e *Error) Write(logger *logrus.Entry, w http.ResponseWriter) {
-	writeXML(logger, w, e.r, e.httpStatus, e)
 }
 
 func BadDigestError(r *http.Request) *Error {

@@ -17,9 +17,10 @@ import (
 func writeError(logger *logrus.Entry, r *http.Request, w http.ResponseWriter, err error) {
 	switch e := err.(type) {
 	case *Error:
-		e.Write(logger, w)
+		writeXML(logger, r, w, e.httpStatus, e)
 	default:
-		InternalError(r, e).Write(logger, w)
+		s3Err := InternalError(r, e)
+		writeXML(logger, r, w, s3Err.httpStatus, s3Err)
 	}
 }
 
@@ -38,14 +39,14 @@ func writeXMLBody(logger *logrus.Entry, w http.ResponseWriter, v interface{}) {
 	}
 }
 
-func writeXML(logger *logrus.Entry, w http.ResponseWriter, r *http.Request, code int, v interface{}) {
+func writeXML(logger *logrus.Entry, r *http.Request, w http.ResponseWriter, code int, v interface{}) {
 	writeXMLPrelude(w, code)
 	writeXMLBody(logger, w, v)
 }
 
 func NotImplementedEndpoint(logger *logrus.Entry) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		NotImplementedError(r).Write(logger, w)
+		writeError(logger, r, w, NotImplementedError(r))
 	}
 }
 
