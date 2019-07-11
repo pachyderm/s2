@@ -272,7 +272,7 @@ func (h *multipartHandler) complete(w http.ResponseWriter, r *http.Request) {
 		errChan <- err
 	}()
 
-	writeXMLPrelude(w, http.StatusOK)
+	streaming := false
 
 	for {
 		select {
@@ -287,17 +287,30 @@ func (h *multipartHandler) complete(w http.ResponseWriter, r *http.Request) {
 					s3Error = InternalError(r, e)
 				}
 
-				writeXMLBody(h.logger, w, s3Error)
+				if streaming {
+					writeXMLBody(h.logger, w, s3Error)
+				} else {
+					writeError(h.logger, r, w, s3Error)
+				}
 			} else {
 				if !strings.HasPrefix(result.ETag, "\"") {
 					result.ETag = fmt.Sprintf("\"%s\"", result.ETag)
 				}
 
-				writeXMLBody(h.logger, w, result)
+				if streaming {
+					writeXMLBody(h.logger, w, result)
+				} else {
+					writeXML(h.logger, r, w, http.StatusOK, result)
+				}
 			}
 			return
 		case <-time.After(completeMultipartPing):
-			fmt.Fprint(w, " ")
+			if !streaming {
+				streaming = true
+				writeXMLPrelude(w, http.StatusOK)
+			} else {
+				fmt.Fprint(w, " ")
+			}
 		}
 	}
 }
