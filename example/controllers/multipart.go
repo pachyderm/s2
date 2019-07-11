@@ -130,10 +130,16 @@ func (c Controller) CompleteMultipart(r *http.Request, name, key, uploadID strin
 
 	bytes := []byte{}
 
-	for _, part := range parts {
+	for i, part := range parts {
 		chunk, ok := multipart[part.PartNumber]
 		if !ok {
 			return s2.InvalidPartError(r)
+		}
+
+		if i < len(parts)-1 && len(chunk) < 5*1024*1024 {
+			// each part, except for the last, is expected to be at least 5mb
+			// in s3
+			return s2.EntityTooSmallError(r)
 		}
 
 		if fmt.Sprintf("%x", md5.Sum(chunk)) != part.ETag {

@@ -48,6 +48,10 @@ func BucketAlreadyOwnedByYouError(r *http.Request) *Error {
 	return NewError(r, http.StatusConflict, "BucketAlreadyOwnedByYou", "The bucket you tried to create already exists, and you own it.")
 }
 
+func EntityTooSmallError(r *http.Request) *Error {
+	return NewError(r, http.StatusBadRequest, "EntityTooSmall", "Your proposed upload is smaller than the minimum allowed object size. Each part must be at least 5 MB in size, except the last part.")
+}
+
 func InternalError(r *http.Request, err error) *Error {
 	return NewError(r, http.StatusInternalServerError, "InternalError", err.Error())
 }
