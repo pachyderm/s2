@@ -1,12 +1,10 @@
 package s2
 
 import (
-	"bytes"
-	"crypto/md5"
-	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -14,29 +12,29 @@ import (
 )
 
 type GetObjectResult struct {
-	Name    string
-	ETag    string
-	ModTime time.Time
-	Content io.ReadSeeker
+	Name    string        `xml:"Name"`
+	ETag    string        `xml:"ETag"`
+	ModTime time.Time     `xml:"ModTime"`
+	Content io.ReadSeeker `xml:"Content"`
 }
 
 type ObjectController interface {
-	Get(r *http.Request, bucket, key string, result *GetObjectResult) error
-	Put(r *http.Request, bucket, key string, reader io.Reader) error
-	Del(r *http.Request, bucket, key string) error
+	GetObject(r *http.Request, bucket, key string, result *GetObjectResult) error
+	PutObject(r *http.Request, bucket, key string, reader io.Reader) error
+	DeleteObject(r *http.Request, bucket, key string) error
 }
 
 type UnimplementedObjectController struct{}
 
-func (c UnimplementedObjectController) Get(r *http.Request, bucket, key string, result *GetObjectResult) error {
+func (c UnimplementedObjectController) GetObject(r *http.Request, bucket, key string, result *GetObjectResult) error {
 	return NotImplementedError(r)
 }
 
-func (c UnimplementedObjectController) Put(r *http.Request, bucket, key string, reader io.Reader) error {
+func (c UnimplementedObjectController) PutObject(r *http.Request, bucket, key string, reader io.Reader) error {
 	return NotImplementedError(r)
 }
 
-func (c UnimplementedObjectController) Del(r *http.Request, bucket, key string) error {
+func (c UnimplementedObjectController) DeleteObject(r *http.Request, bucket, key string) error {
 	return NotImplementedError(r)
 }
 
@@ -52,13 +50,17 @@ func (h *objectHandler) get(w http.ResponseWriter, r *http.Request) {
 
 	result := &GetObjectResult{}
 
-	if err := h.controller.Get(r, bucket, key, result); err != nil {
-		writeError(h.logger, r, w, err)
+	if err := h.controller.GetObject(r, bucket, key, result); err != nil {
+		writeError(h.logger, w, r, err)
 		return
 	}
 
 	if result.ETag != "" {
-		w.Header().Set("ETag", fmt.Sprintf("\"%s\"", result.ETag))
+		if !strings.HasPrefix(result.ETag, "\"") {
+			result.ETag = fmt.Sprintf("\"%s\"", result.ETag)
+		}
+
+		w.Header().Set("ETag", result.ETag)
 	}
 
 	http.ServeContent(w, r, result.Name, result.ModTime, result.Content)
@@ -69,38 +71,23 @@ func (h *objectHandler) put(w http.ResponseWriter, r *http.Request) {
 	bucket := vars["bucket"]
 	key := vars["key"]
 
-	expectedHash, ok := r.Header["Content-Md5"]
-	var expectedHashBytes []uint8
-	var err error
-	if ok && len(expectedHash) == 1 {
-		expectedHashBytes, err = base64.StdEncoding.DecodeString(expectedHash[0])
-		if err != nil || len(expectedHashBytes) != 16 {
-			InvalidDigestError(r).Write(h.logger, w)
-			return
-		}
-	}
+	hashBytes, shouldCleanup, err := withBodyReader(r, func(reader io.Reader) error {
+		return h.controller.PutObject(r, bucket, key, reader)
+	})
 
-	hasher := md5.New()
-	reader := io.TeeReader(r.Body, hasher)
-	if err := h.controller.Put(r, bucket, key, reader); err != nil {
-		writeError(h.logger, r, w, err)
-		return
-	}
-
-	actualHashBytes := hasher.Sum(nil)
-	if expectedHashBytes != nil && !bytes.Equal(expectedHashBytes, actualHashBytes) {
-		BadDigestError(r).Write(h.logger, w)
-
+	if shouldCleanup {
 		// try to clean up the file
-		if err := h.controller.Del(r, bucket, key); err != nil {
+		if err := h.controller.DeleteObject(r, bucket, key); err != nil {
 			h.logger.Errorf("could not clean up file after an error: %+v", err)
 		}
-
-		return
 	}
 
-	w.Header().Set("ETag", fmt.Sprintf("\"%x\"", actualHashBytes))
-	w.WriteHeader(http.StatusOK)
+	if err != nil {
+		writeError(h.logger, w, r, err)
+	} else {
+		w.Header().Set("ETag", fmt.Sprintf("\"%x\"", hashBytes))
+		w.WriteHeader(http.StatusOK)
+	}
 }
 
 func (h *objectHandler) del(w http.ResponseWriter, r *http.Request) {
@@ -108,8 +95,8 @@ func (h *objectHandler) del(w http.ResponseWriter, r *http.Request) {
 	bucket := vars["bucket"]
 	key := vars["key"]
 
-	if err := h.controller.Del(r, bucket, key); err != nil {
-		writeError(h.logger, r, w, err)
+	if err := h.controller.DeleteObject(r, bucket, key); err != nil {
+		writeError(h.logger, w, r, err)
 		return
 	}
 

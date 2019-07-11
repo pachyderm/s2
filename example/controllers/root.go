@@ -7,11 +7,9 @@ import (
 	"github.com/pachyderm/s2/example/models"
 )
 
-type RootController struct {
-	DB models.Storage
-}
+func (c Controller) ListBuckets(r *http.Request, result *s2.ListAllMyBucketsResult) error {
+	c.logger.Tracef("ListBuckets: %+v", result)
 
-func (c RootController) List(r *http.Request, result *s2.ListAllMyBucketsResult) error {
 	c.DB.Lock.RLock()
 	defer c.DB.Lock.RUnlock()
 	result.Owner = models.GlobalUser

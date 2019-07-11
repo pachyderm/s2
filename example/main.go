@@ -14,21 +14,25 @@ import (
 func main() {
 	db := models.NewStorage()
 
+	logrus.SetLevel(logrus.TraceLevel)
 	logger := logrus.WithFields(logrus.Fields{
 		"source": "s2-example",
 	})
 
-	s3 := s2.NewS2()
-	s3.Root = controllers.RootController{DB: db}
-	s3.Bucket = controllers.BucketController{DB: db}
-	s3.Object = controllers.ObjectController{DB: db}
+	controller := controllers.NewController(db, logger)
 
-	router := s3.Router(logger)
+	s3 := s2.NewS2(logger)
+	s3.Root = controller
+	s3.Bucket = controller
+	s3.Object = controller
+	s3.Multipart = controller
+
+	router := s3.Router()
 
 	server := &http.Server{
 		Addr: ":8080",
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			logger.Infof("http request: %s %s", r.Method, r.RequestURI)
+			logger.Infof("%s %s", r.Method, r.RequestURI)
 			router.ServeHTTP(w, r)
 		}),
 		ErrorLog:     stdlog.New(logger.Writer(), "", 0),

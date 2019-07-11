@@ -40,12 +40,14 @@ func (s Storage) Bucket(r *http.Request, name string) (Bucket, error) {
 }
 
 type Bucket struct {
-    Objects map[string][]byte
+    Objects    map[string][]byte
+    Multiparts map[MultipartKey]map[int][]byte
 }
 
 func NewBucket() Bucket {
     return Bucket{
-        Objects: map[string][]byte{},
+        Objects:    map[string][]byte{},
+        Multiparts: map[MultipartKey]map[int][]byte{},
     }
 }
 
@@ -55,4 +57,24 @@ func (b Bucket) Object(r *http.Request, key string) ([]byte, error) {
         return nil, s2.NoSuchKeyError(r)
     }
     return bytes, nil
+}
+
+func (b Bucket) Multipart(r *http.Request, key, uploadID string) (map[int][]byte, error) {
+    multipart, ok := b.Multiparts[NewMultipartKey(key, uploadID)]
+    if !ok {
+        return nil, s2.NoSuchUploadError(r)
+    }
+    return multipart, nil
+}
+
+type MultipartKey struct {
+    Key      string
+    UploadID string
+}
+
+func NewMultipartKey(key, uploadID string) MultipartKey {
+    return MultipartKey{
+        Key:      key,
+        UploadID: uploadID,
+    }
 }
