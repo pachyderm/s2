@@ -132,7 +132,7 @@ func (c Controller) CompleteMultipart(r *http.Request, name, key, uploadID strin
 
 	for i, part := range parts {
 		chunk, ok := multipart[part.PartNumber]
-		if !ok {
+		if !ok || fmt.Sprintf("%x", md5.Sum(chunk)) != part.ETag {
 			return s2.InvalidPartError(r)
 		}
 
@@ -140,11 +140,6 @@ func (c Controller) CompleteMultipart(r *http.Request, name, key, uploadID strin
 			// each part, except for the last, is expected to be at least 5mb
 			// in s3
 			return s2.EntityTooSmallError(r)
-		}
-
-		if fmt.Sprintf("%x", md5.Sum(chunk)) != part.ETag {
-			// TODO: is this the correct error to return?
-			return s2.BadDigestError(r)
 		}
 
 		bytes = append(bytes, chunk...)
