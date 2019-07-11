@@ -10,22 +10,28 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 )
 
 // writeError serializes an error to a response as XML
-func writeError(logger *logrus.Entry, r *http.Request, w http.ResponseWriter, err error) {
+func writeError(logger *logrus.Entry, w http.ResponseWriter, r *http.Request, err error) {
 	switch e := err.(type) {
 	case *Error:
-		writeXML(logger, r, w, e.httpStatus, e)
+		writeXML(logger, w, r, e.httpStatus, e)
 	default:
 		s3Err := InternalError(r, e)
-		writeXML(logger, r, w, s3Err.httpStatus, s3Err)
+		writeXML(logger, w, r, s3Err.httpStatus, s3Err)
 	}
 }
 
-func writeXMLPrelude(w http.ResponseWriter, code int) {
+func writeXMLPrelude(w http.ResponseWriter, r *http.Request, code int) {
+	vars := mux.Vars(r)
+	requestID := vars["requestID"]
+
 	w.Header().Set("Content-Type", "application/xml")
+	w.Header().Set("x-amz-id-2", requestID)
+	w.Header().Set("x-amz-request-id", requestID)
 	w.WriteHeader(code)
 	fmt.Fprint(w, xml.Header)
 }
@@ -39,14 +45,14 @@ func writeXMLBody(logger *logrus.Entry, w http.ResponseWriter, v interface{}) {
 	}
 }
 
-func writeXML(logger *logrus.Entry, r *http.Request, w http.ResponseWriter, code int, v interface{}) {
-	writeXMLPrelude(w, code)
+func writeXML(logger *logrus.Entry, w http.ResponseWriter, r *http.Request, code int, v interface{}) {
+	writeXMLPrelude(w, r, code)
 	writeXMLBody(logger, w, v)
 }
 
 func NotImplementedEndpoint(logger *logrus.Entry) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		writeError(logger, r, w, NotImplementedError(r))
+		writeError(logger, w, r, NotImplementedError(r))
 	}
 }
 

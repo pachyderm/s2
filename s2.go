@@ -1,9 +1,11 @@
 package s2
 
 import (
+	"fmt"
 	"net/http"
 	"regexp"
 
+	"github.com/gofrs/uuid"
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 )
@@ -65,36 +67,56 @@ type S2 struct {
 	Bucket    BucketController
 	Object    ObjectController
 	Multipart MultipartController
+	logger    *logrus.Entry
 }
 
-func NewS2() *S2 {
+func NewS2(logger *logrus.Entry) *S2 {
 	return &S2{
 		Root:      UnimplementedRootController{},
 		Bucket:    UnimplementedBucketController{},
 		Object:    UnimplementedObjectController{},
 		Multipart: UnimplementedMultipartController{},
+		logger:    logger,
 	}
 }
 
-func (h *S2) Router(logger *logrus.Entry) *mux.Router {
+func (h *S2) requestIDMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+
+		id, err := uuid.NewV4()
+		if err != nil {
+			baseErr := fmt.Errorf("could not generate request ID: %v", err)
+			writeError(h.logger, w, r, InternalError(r, baseErr))
+			return
+		}
+
+		vars["requestID"] = id.String()
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (h *S2) Router() *mux.Router {
 	rootHandler := &rootHandler{
 		controller: h.Root,
-		logger:     logger,
+		logger:     h.logger,
 	}
 	bucketHandler := &bucketHandler{
 		controller: h.Bucket,
-		logger:     logger,
+		logger:     h.logger,
 	}
 	objectHandler := &objectHandler{
 		controller: h.Object,
-		logger:     logger,
+		logger:     h.logger,
 	}
 	multipartHandler := &multipartHandler{
 		controller: h.Multipart,
-		logger:     logger,
+		logger:     h.logger,
 	}
 
 	router := mux.NewRouter()
+	router.Use(h.requestIDMiddleware)
+
 	router.Path(`/`).Methods("GET", "HEAD").HandlerFunc(rootHandler.get)
 
 	// Bucket-related routes. Repo validation regex is the same that the aws
@@ -104,25 +126,25 @@ func (h *S2) Router(logger *logrus.Entry) *mux.Router {
 	// slash" functionality, because that uses redirects which doesn't always
 	// play nice with s3 clients.
 	trailingSlashBucketRouter := router.Path(`/{bucket:[a-zA-Z0-9\-_\.]{1,255}}/`).Subrouter()
-	attachBucketRoutes(logger, trailingSlashBucketRouter, bucketHandler, multipartHandler)
+	attachBucketRoutes(h.logger, trailingSlashBucketRouter, bucketHandler, multipartHandler)
 	bucketRouter := router.Path(`/{bucket:[a-zA-Z0-9\-_\.]{1,255}}`).Subrouter()
-	attachBucketRoutes(logger, bucketRouter, bucketHandler, multipartHandler)
+	attachBucketRoutes(h.logger, bucketRouter, bucketHandler, multipartHandler)
 
 	// Object-related routes
 	objectRouter := router.Path(`/{bucket:[a-zA-Z0-9\-_\.]{1,255}}/{key:.+}`).Subrouter()
-	attachObjectRoutes(logger, objectRouter, objectHandler, multipartHandler)
+	attachObjectRoutes(h.logger, objectRouter, objectHandler, multipartHandler)
 
 	router.MethodNotAllowedHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		logger.Infof("method not allowed: %s %s", r.Method, r.URL.Path)
-		writeError(logger, r, w, MethodNotAllowedError(r))
+		h.logger.Infof("method not allowed: %s %s", r.Method, r.URL.Path)
+		writeError(h.logger, w, r, MethodNotAllowedError(r))
 	})
 
 	router.NotFoundHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		logger.Infof("not found: %s", r.URL.Path)
+		h.logger.Infof("not found: %s", r.URL.Path)
 		if bucketNameValidator.MatchString(r.URL.Path) {
-			writeError(logger, r, w, NoSuchKeyError(r))
+			writeError(h.logger, w, r, NoSuchKeyError(r))
 		} else {
-			writeError(logger, r, w, InvalidBucketNameError(r))
+			writeError(h.logger, w, r, InvalidBucketNameError(r))
 		}
 	})
 

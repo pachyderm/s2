@@ -38,9 +38,9 @@ func (h *rootHandler) get(w http.ResponseWriter, r *http.Request) {
 	result := &ListAllMyBucketsResult{}
 
 	if err := h.controller.ListBuckets(r, result); err != nil {
-		writeError(h.logger, r, w, err)
+		writeError(h.logger, w, r, err)
 		return
 	}
 
-	writeXML(h.logger, r, w, http.StatusOK, result)
+	writeXML(h.logger, w, r, http.StatusOK, result)
 }

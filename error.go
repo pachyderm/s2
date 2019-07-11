@@ -3,6 +3,8 @@ package s2
 import (
 	"fmt"
 	"net/http"
+
+	"github.com/gorilla/mux"
 )
 
 // Error is an XML-encodable error response
@@ -16,13 +18,16 @@ type Error struct {
 }
 
 func NewError(r *http.Request, httpStatus int, code string, message string) *Error {
+	vars := mux.Vars(r)
+	requestID := vars["requestID"]
+
 	return &Error{
 		r:          r,
 		httpStatus: httpStatus,
 		Code:       code,
 		Message:    message,
 		Resource:   r.URL.Path,
-		RequestID:  r.Header.Get("X-Request-ID"),
+		RequestID:  requestID,
 	}
 }
 

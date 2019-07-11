@@ -21,13 +21,13 @@ func main() {
 
 	controller := controllers.NewController(db, logger)
 
-	s3 := s2.NewS2()
+	s3 := s2.NewS2(logger)
 	s3.Root = controller
 	s3.Bucket = controller
 	s3.Object = controller
 	s3.Multipart = controller
 
-	router := s3.Router(logger)
+	router := s3.Router()
 
 	server := &http.Server{
 		Addr: ":8080",

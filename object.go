@@ -51,7 +51,7 @@ func (h *objectHandler) get(w http.ResponseWriter, r *http.Request) {
 	result := &GetObjectResult{}
 
 	if err := h.controller.GetObject(r, bucket, key, result); err != nil {
-		writeError(h.logger, r, w, err)
+		writeError(h.logger, w, r, err)
 		return
 	}
 
@@ -83,7 +83,7 @@ func (h *objectHandler) put(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err != nil {
-		writeError(h.logger, r, w, err)
+		writeError(h.logger, w, r, err)
 	} else {
 		w.Header().Set("ETag", fmt.Sprintf("\"%x\"", hashBytes))
 		w.WriteHeader(http.StatusOK)
@@ -96,7 +96,7 @@ func (h *objectHandler) del(w http.ResponseWriter, r *http.Request) {
 	key := vars["key"]
 
 	if err := h.controller.DeleteObject(r, bucket, key); err != nil {
-		writeError(h.logger, r, w, err)
+		writeError(h.logger, w, r, err)
 		return
 	}
 
