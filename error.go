@@ -9,12 +9,11 @@ import (
 
 // Error is an XML-encodable error response
 type Error struct {
-	r          *http.Request `xml:"-"`
-	httpStatus int           `xml:"-"`
-	Code       string        `xml:"Code"`
-	Message    string        `xml:"Message"`
-	Resource   string        `xml:"Resource"`
-	RequestID  string        `xml:"RequestId"`
+	HttpStatus int    `xml:"-"`
+	Code       string `xml:"Code"`
+	Message    string `xml:"Message"`
+	Resource   string `xml:"Resource"`
+	RequestID  string `xml:"RequestId"`
 }
 
 func NewError(r *http.Request, httpStatus int, code string, message string) *Error {
@@ -22,8 +21,7 @@ func NewError(r *http.Request, httpStatus int, code string, message string) *Err
 	requestID := vars["requestID"]
 
 	return &Error{
-		r:          r,
-		httpStatus: httpStatus,
+		HttpStatus: httpStatus,
 		Code:       code,
 		Message:    message,
 		Resource:   r.URL.Path,

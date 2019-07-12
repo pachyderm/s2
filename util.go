@@ -18,10 +18,10 @@ import (
 func writeError(logger *logrus.Entry, w http.ResponseWriter, r *http.Request, err error) {
 	switch e := err.(type) {
 	case *Error:
-		writeXML(logger, w, r, e.httpStatus, e)
+		writeXML(logger, w, r, e.HttpStatus, e)
 	default:
 		s3Err := InternalError(r, e)
-		writeXML(logger, w, r, s3Err.httpStatus, s3Err)
+		writeXML(logger, w, r, s3Err.HttpStatus, s3Err)
 	}
 }
 
