@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
@@ -56,29 +57,29 @@ func NotImplementedEndpoint(logger *logrus.Entry) http.HandlerFunc {
 	}
 }
 
-func withBodyReader(r *http.Request, f func(reader io.Reader) error) ([]byte, bool, error) {
+func withBodyReader(r *http.Request, f func(reader io.Reader) error) (bool, error) {
 	expectedHash, ok := r.Header["Content-Md5"]
 	var expectedHashBytes []uint8
 	var err error
 	if ok && len(expectedHash) == 1 {
 		expectedHashBytes, err = base64.StdEncoding.DecodeString(expectedHash[0])
 		if err != nil || len(expectedHashBytes) != 16 {
-			return nil, false, InvalidDigestError(r)
+			return false, InvalidDigestError(r)
 		}
 	}
 
 	hasher := md5.New()
 	reader := io.TeeReader(r.Body, hasher)
 	if err = f(reader); err != nil {
-		return nil, false, err
+		return false, err
 	}
 
 	actualHashBytes := hasher.Sum(nil)
 	if expectedHashBytes != nil && !bytes.Equal(expectedHashBytes, actualHashBytes) {
-		return nil, true, BadDigestError(r)
+		return true, BadDigestError(r)
 	}
 
-	return actualHashBytes, false, nil
+	return false, nil
 }
 
 // intFormValue extracts an int value from a request's form values, ensuring
@@ -97,4 +98,18 @@ func intFormValue(r *http.Request, name string, min int, max int, def int) (int,
 	}
 
 	return i, nil
+}
+
+func stripETagQuotes(s string) string {
+	if strings.HasPrefix(s, "\"") && strings.HasSuffix(s, "\"") {
+		return strings.Trim(s, "\"")
+	}
+	return s
+}
+
+func addETagQuotes(s string) string {
+	if !strings.HasPrefix(s, "\"") {
+		return fmt.Sprintf("\"%s\"", s)
+	}
+	return s
 }

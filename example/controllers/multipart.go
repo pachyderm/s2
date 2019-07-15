@@ -50,10 +50,10 @@ func (c Controller) ListMultipart(r *http.Request, name string, result *s2.ListM
 	})
 
 	for _, key := range keys {
-		if key.Key < result.KeyMarker {
+		if key.Key <= result.KeyMarker {
 			continue
 		}
-		if key.UploadID < result.UploadIDMarker {
+		if key.UploadID <= result.UploadIDMarker {
 			continue
 		}
 
@@ -179,7 +179,7 @@ func (c Controller) ListMultipartChunks(r *http.Request, name, key, uploadID str
 	result.StorageClass = models.StorageClass
 
 	for _, key := range keys {
-		if key < result.PartNumberMarker {
+		if key <= result.PartNumberMarker {
 			continue
 		}
 
@@ -199,12 +199,12 @@ func (c Controller) ListMultipartChunks(r *http.Request, name, key, uploadID str
 	return nil
 }
 
-func (c Controller) UploadMultipartChunk(r *http.Request, name, key, uploadID string, partNumber int, reader io.Reader) error {
+func (c Controller) UploadMultipartChunk(r *http.Request, name, key, uploadID string, partNumber int, reader io.Reader) (string, error) {
 	c.logger.Tracef("UploadMultipartChunk: name=%+v, key=%+v, uploadID=%+v partNumber=%+v", name, key, uploadID, partNumber)
 
 	bytes, err := ioutil.ReadAll(reader)
 	if err != nil {
-		return s2.InternalError(r, err)
+		return "", s2.InternalError(r, err)
 	}
 
 	c.DB.Lock.Lock()
@@ -212,16 +212,17 @@ func (c Controller) UploadMultipartChunk(r *http.Request, name, key, uploadID st
 
 	bucket, err := c.DB.Bucket(r, name)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	multipart, err := bucket.Multipart(r, key, uploadID)
 	if err != nil {
-		return err
+		return "", err
 	}
 
+	hash := md5.Sum(bytes)
 	multipart[partNumber] = bytes
-	return nil
+	return fmt.Sprintf("%x", hash), nil
 }
 
 func (c Controller) DeleteMultipartChunk(r *http.Request, name, key, uploadID string, partNumber int) error {

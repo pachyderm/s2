@@ -7,7 +7,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -93,7 +92,7 @@ type MultipartController interface {
 	AbortMultipart(r *http.Request, bucket, key, uploadID string) error
 	CompleteMultipart(r *http.Request, bucket, key, uploadID string, parts []Part, result *CompleteMultipartUploadResult) error
 	ListMultipartChunks(r *http.Request, bucket, key, uploadID string, result *ListPartsResult) error
-	UploadMultipartChunk(r *http.Request, bucket, key, uploadID string, partNumber int, reader io.Reader) error
+	UploadMultipartChunk(r *http.Request, bucket, key, uploadID string, partNumber int, reader io.Reader) (string, error)
 	DeleteMultipartChunk(r *http.Request, bucket, key, uploadID string, partNumber int) error
 }
 
@@ -119,8 +118,8 @@ func (c UnimplementedMultipartController) ListMultipartChunks(r *http.Request, b
 	return NotImplementedError(r)
 }
 
-func (c UnimplementedMultipartController) UploadMultipartChunk(r *http.Request, bucket, key, uploadID string, partNumber int, reader io.Reader) error {
-	return NotImplementedError(r)
+func (c UnimplementedMultipartController) UploadMultipartChunk(r *http.Request, bucket, key, uploadID string, partNumber int, reader io.Reader) (string, error) {
+	return "", NotImplementedError(r)
 }
 
 func (c UnimplementedMultipartController) DeleteMultipartChunk(r *http.Request, bucket, key, uploadID string, partNumber int) error {
@@ -255,9 +254,7 @@ func (h *multipartHandler) complete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for _, part := range payload.Parts {
-		if strings.HasPrefix(part.ETag, "\"") && strings.HasSuffix(part.ETag, "\"") {
-			part.ETag = strings.Trim(part.ETag, "\"")
-		}
+		part.ETag = addETagQuotes(part.ETag)
 	}
 
 	result := &CompleteMultipartUploadResult{
@@ -293,9 +290,7 @@ func (h *multipartHandler) complete(w http.ResponseWriter, r *http.Request) {
 					writeError(h.logger, w, r, s3Error)
 				}
 			} else {
-				if !strings.HasPrefix(result.ETag, "\"") {
-					result.ETag = fmt.Sprintf("\"%s\"", result.ETag)
-				}
+				result.ETag = addETagQuotes(result.ETag)
 
 				if streaming {
 					writeXMLBody(h.logger, w, result)
@@ -320,6 +315,7 @@ func (h *multipartHandler) put(w http.ResponseWriter, r *http.Request) {
 	bucket := vars["bucket"]
 	key := vars["key"]
 
+	etag := ""
 	uploadID := r.FormValue("uploadId")
 	partNumber, err := intFormValue(r, "partNumber", 0, maxPartsAllowed, 0)
 	if err != nil {
@@ -327,8 +323,10 @@ func (h *multipartHandler) put(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	hashBytes, shouldCleanup, err := withBodyReader(r, func(reader io.Reader) error {
-		return h.controller.UploadMultipartChunk(r, bucket, key, uploadID, partNumber, reader)
+	shouldCleanup, err := withBodyReader(r, func(reader io.Reader) error {
+		fetchedETag, err := h.controller.UploadMultipartChunk(r, bucket, key, uploadID, partNumber, reader)
+		etag = fetchedETag
+		return err
 	})
 
 	if shouldCleanup {
@@ -343,7 +341,10 @@ func (h *multipartHandler) put(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("ETag", fmt.Sprintf("\"%x\"", hashBytes))
+	if etag != "" {
+		w.Header().Set("ETag", addETagQuotes(etag))
+	}
+
 	w.WriteHeader(http.StatusOK)
 }
 

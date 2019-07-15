@@ -117,6 +117,10 @@ func (h bucketHandler) get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	for _, contents := range result.Contents {
+		contents.ETag = addETagQuotes(contents.ETag)
+	}
+
 	if result.IsTruncated {
 		if len(result.Contents) > 0 && len(result.CommonPrefixes) == 0 {
 			result.NextMarker = result.Contents[len(result.Contents)-1].Key

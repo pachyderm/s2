@@ -1,10 +1,8 @@
 package s2
 
 import (
-	"fmt"
 	"io"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -20,7 +18,7 @@ type GetObjectResult struct {
 
 type ObjectController interface {
 	GetObject(r *http.Request, bucket, key string, result *GetObjectResult) error
-	PutObject(r *http.Request, bucket, key string, reader io.Reader) error
+	PutObject(r *http.Request, bucket, key string, reader io.Reader) (string, error)
 	DeleteObject(r *http.Request, bucket, key string) error
 }
 
@@ -30,8 +28,8 @@ func (c UnimplementedObjectController) GetObject(r *http.Request, bucket, key st
 	return NotImplementedError(r)
 }
 
-func (c UnimplementedObjectController) PutObject(r *http.Request, bucket, key string, reader io.Reader) error {
-	return NotImplementedError(r)
+func (c UnimplementedObjectController) PutObject(r *http.Request, bucket, key string, reader io.Reader) (string, error) {
+	return "", NotImplementedError(r)
 }
 
 func (c UnimplementedObjectController) DeleteObject(r *http.Request, bucket, key string) error {
@@ -56,11 +54,7 @@ func (h *objectHandler) get(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if result.ETag != "" {
-		if !strings.HasPrefix(result.ETag, "\"") {
-			result.ETag = fmt.Sprintf("\"%s\"", result.ETag)
-		}
-
-		w.Header().Set("ETag", result.ETag)
+		w.Header().Set("ETag", addETagQuotes(result.ETag))
 	}
 
 	http.ServeContent(w, r, result.Name, result.ModTime, result.Content)
@@ -70,9 +64,12 @@ func (h *objectHandler) put(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	bucket := vars["bucket"]
 	key := vars["key"]
+	etag := ""
 
-	hashBytes, shouldCleanup, err := withBodyReader(r, func(reader io.Reader) error {
-		return h.controller.PutObject(r, bucket, key, reader)
+	shouldCleanup, err := withBodyReader(r, func(reader io.Reader) error {
+		fetchedETag, err := h.controller.PutObject(r, bucket, key, reader)
+		etag = fetchedETag
+		return err
 	})
 
 	if shouldCleanup {
@@ -84,10 +81,13 @@ func (h *objectHandler) put(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		writeError(h.logger, w, r, err)
-	} else {
-		w.Header().Set("ETag", fmt.Sprintf("\"%x\"", hashBytes))
-		w.WriteHeader(http.StatusOK)
+		return
 	}
+
+	if etag != "" {
+		w.Header().Set("ETag", addETagQuotes(etag))
+	}
+	w.WriteHeader(http.StatusOK)
 }
 
 func (h *objectHandler) del(w http.ResponseWriter, r *http.Request) {
