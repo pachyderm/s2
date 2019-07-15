@@ -86,7 +86,7 @@ func (h bucketHandler) location(w http.ResponseWriter, r *http.Request) {
 	result := &LocationConstraint{}
 
 	if err := h.controller.GetLocation(r, bucket, result); err != nil {
-		writeError(h.logger, w, r, err)
+		WriteError(h.logger, w, r, err)
 		return
 	}
 
@@ -99,7 +99,7 @@ func (h bucketHandler) get(w http.ResponseWriter, r *http.Request) {
 
 	maxKeys, err := intFormValue(r, "max-keys", 0, defaultMaxKeys, defaultMaxKeys)
 	if err != nil {
-		writeError(h.logger, w, r, err)
+		WriteError(h.logger, w, r, err)
 		return
 	}
 
@@ -113,7 +113,7 @@ func (h bucketHandler) get(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.controller.ListObjects(r, bucket, result); err != nil {
-		writeError(h.logger, w, r, err)
+		WriteError(h.logger, w, r, err)
 		return
 	}
 
@@ -146,7 +146,7 @@ func (h bucketHandler) put(w http.ResponseWriter, r *http.Request) {
 	bucket := vars["bucket"]
 
 	if err := h.controller.CreateBucket(r, bucket); err != nil {
-		writeError(h.logger, w, r, err)
+		WriteError(h.logger, w, r, err)
 		return
 	}
 
@@ -158,7 +158,7 @@ func (h bucketHandler) del(w http.ResponseWriter, r *http.Request) {
 	bucket := vars["bucket"]
 
 	if err := h.controller.DeleteBucket(r, bucket); err != nil {
-		writeError(h.logger, w, r, err)
+		WriteError(h.logger, w, r, err)
 		return
 	}
 

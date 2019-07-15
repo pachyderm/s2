@@ -87,7 +87,7 @@ func (h *S2) requestIDMiddleware(next http.Handler) http.Handler {
 		id, err := uuid.NewV4()
 		if err != nil {
 			baseErr := fmt.Errorf("could not generate request ID: %v", err)
-			writeError(h.logger, w, r, InternalError(r, baseErr))
+			WriteError(h.logger, w, r, InternalError(r, baseErr))
 			return
 		}
 
@@ -136,15 +136,15 @@ func (h *S2) Router() *mux.Router {
 
 	router.MethodNotAllowedHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h.logger.Infof("method not allowed: %s %s", r.Method, r.URL.Path)
-		writeError(h.logger, w, r, MethodNotAllowedError(r))
+		WriteError(h.logger, w, r, MethodNotAllowedError(r))
 	})
 
 	router.NotFoundHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h.logger.Infof("not found: %s", r.URL.Path)
 		if bucketNameValidator.MatchString(r.URL.Path) {
-			writeError(h.logger, w, r, NoSuchKeyError(r))
+			WriteError(h.logger, w, r, NoSuchKeyError(r))
 		} else {
-			writeError(h.logger, w, r, InvalidBucketNameError(r))
+			WriteError(h.logger, w, r, InvalidBucketNameError(r))
 		}
 	})
 

@@ -143,7 +143,7 @@ func (h *multipartHandler) list(w http.ResponseWriter, r *http.Request) {
 
 	maxUploads, err := intFormValue(r, "max-uploads", 0, defaultMaxUploads, defaultMaxUploads)
 	if err != nil {
-		writeError(h.logger, w, r, err)
+		WriteError(h.logger, w, r, err)
 		return
 	}
 
@@ -155,7 +155,7 @@ func (h *multipartHandler) list(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.controller.ListMultipart(r, bucket, result); err != nil {
-		writeError(h.logger, w, r, err)
+		WriteError(h.logger, w, r, err)
 		return
 	}
 
@@ -174,13 +174,13 @@ func (h *multipartHandler) listChunks(w http.ResponseWriter, r *http.Request) {
 
 	maxParts, err := intFormValue(r, "max-parts", 0, defaultMaxParts, defaultMaxParts)
 	if err != nil {
-		writeError(h.logger, w, r, err)
+		WriteError(h.logger, w, r, err)
 		return
 	}
 
 	partNumberMarker, err := intFormValue(r, "part-number-marker", 0, maxPartsAllowed, 0)
 	if err != nil {
-		writeError(h.logger, w, r, err)
+		WriteError(h.logger, w, r, err)
 		return
 	}
 
@@ -193,7 +193,7 @@ func (h *multipartHandler) listChunks(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.controller.ListMultipartChunks(r, bucket, key, result.UploadID, result); err != nil {
-		writeError(h.logger, w, r, err)
+		WriteError(h.logger, w, r, err)
 		return
 	}
 
@@ -211,7 +211,7 @@ func (h *multipartHandler) init(w http.ResponseWriter, r *http.Request) {
 
 	uploadID, err := h.controller.InitMultipart(r, bucket, key)
 	if err != nil {
-		writeError(h.logger, w, r, err)
+		WriteError(h.logger, w, r, err)
 		return
 	}
 
@@ -234,13 +234,13 @@ func (h *multipartHandler) complete(w http.ResponseWriter, r *http.Request) {
 	bodyBytes, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		err = InternalError(r, fmt.Errorf("could not read request body: %v", err))
-		writeError(h.logger, w, r, err)
+		WriteError(h.logger, w, r, err)
 		return
 	}
 	payload := CompleteMultipartUpload{}
 	err = xml.Unmarshal(bodyBytes, &payload)
 	if err != nil {
-		writeError(h.logger, w, r, MalformedXMLError(r))
+		WriteError(h.logger, w, r, MalformedXMLError(r))
 		return
 	}
 
@@ -249,7 +249,7 @@ func (h *multipartHandler) complete(w http.ResponseWriter, r *http.Request) {
 		return payload.Parts[i].PartNumber < payload.Parts[j].PartNumber
 	})
 	if len(payload.Parts) == 0 || !isSorted {
-		writeError(h.logger, w, r, InvalidPartOrderError(w, r))
+		WriteError(h.logger, w, r, InvalidPartOrderError(w, r))
 		return
 	}
 
@@ -287,7 +287,7 @@ func (h *multipartHandler) complete(w http.ResponseWriter, r *http.Request) {
 				if streaming {
 					writeXMLBody(h.logger, w, s3Error)
 				} else {
-					writeError(h.logger, w, r, s3Error)
+					WriteError(h.logger, w, r, s3Error)
 				}
 			} else {
 				result.ETag = addETagQuotes(result.ETag)
@@ -319,7 +319,7 @@ func (h *multipartHandler) put(w http.ResponseWriter, r *http.Request) {
 	uploadID := r.FormValue("uploadId")
 	partNumber, err := intFormValue(r, "partNumber", 0, maxPartsAllowed, 0)
 	if err != nil {
-		writeError(h.logger, w, r, err)
+		WriteError(h.logger, w, r, err)
 		return
 	}
 
@@ -337,7 +337,7 @@ func (h *multipartHandler) put(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err != nil {
-		writeError(h.logger, w, r, err)
+		WriteError(h.logger, w, r, err)
 		return
 	}
 
@@ -356,7 +356,7 @@ func (h *multipartHandler) del(w http.ResponseWriter, r *http.Request) {
 	uploadID := r.FormValue("uploadId")
 
 	if err := h.controller.AbortMultipart(r, bucket, key, uploadID); err != nil {
-		writeError(h.logger, w, r, err)
+		WriteError(h.logger, w, r, err)
 		return
 	}
 

@@ -15,8 +15,8 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// writeError serializes an error to a response as XML
-func writeError(logger *logrus.Entry, w http.ResponseWriter, r *http.Request, err error) {
+// WriteError serializes an error to a response as XML
+func WriteError(logger *logrus.Entry, w http.ResponseWriter, r *http.Request, err error) {
 	switch e := err.(type) {
 	case *Error:
 		writeXML(logger, w, r, e.HttpStatus, e)
@@ -53,7 +53,7 @@ func writeXML(logger *logrus.Entry, w http.ResponseWriter, r *http.Request, code
 
 func NotImplementedEndpoint(logger *logrus.Entry) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		writeError(logger, w, r, NotImplementedError(r))
+		WriteError(logger, w, r, NotImplementedError(r))
 	}
 }
 
