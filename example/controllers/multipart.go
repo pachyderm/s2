@@ -76,7 +76,7 @@ func (c Controller) ListMultipart(r *http.Request, name, keyMarker, uploadIDMark
 	return
 }
 
-func (c Controller) InitMultipart(r *http.Request, name, key string) (etag string, err error) {
+func (c Controller) InitMultipart(r *http.Request, name, key string) (uploadID string, err error) {
 	c.logger.Tracef("InitMultipart: name=%+v, key=%+v", name, key)
 	uploadID := randomString(10)
 
