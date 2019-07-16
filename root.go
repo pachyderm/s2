@@ -1,32 +1,32 @@
 package s2
 
 import (
+	"encoding/xml"
 	"net/http"
 	"time"
 
 	"github.com/sirupsen/logrus"
 )
 
-// ListAllMyBucketsResult is an XML-encodable listing of repos as buckets
-type ListAllMyBucketsResult struct {
-	Owner   User     `xml:"Owner"`
+type ListBucketsResult struct {
+	XMLName xml.Name `xml:"ListAllMyBucketsResult"`
+	Owner   *User    `xml:"Owner"`
 	Buckets []Bucket `xml:"Buckets>Bucket"`
 }
 
-// Bucket is an XML-encodable repo, represented as an S3 bucket
 type Bucket struct {
 	Name         string    `xml:"Name"`
 	CreationDate time.Time `xml:"CreationDate"`
 }
 
 type RootController interface {
-	ListBuckets(r *http.Request, result *ListAllMyBucketsResult) error
+	ListBuckets(r *http.Request) (owner *User, buckets []Bucket, err error)
 }
 
 type UnimplementedRootController struct{}
 
-func (c UnimplementedRootController) ListBuckets(r *http.Request, result *ListAllMyBucketsResult) error {
-	return NotImplementedError(r)
+func (c UnimplementedRootController) ListBuckets(r *http.Request) (owner *User, buckets []Bucket, err error) {
+	return nil, nil, NotImplementedError(r)
 }
 
 type rootHandler struct {
@@ -35,12 +35,14 @@ type rootHandler struct {
 }
 
 func (h *rootHandler) get(w http.ResponseWriter, r *http.Request) {
-	result := &ListAllMyBucketsResult{}
-
-	if err := h.controller.ListBuckets(r, result); err != nil {
+	owner, buckets, err := h.controller.ListBuckets(r)
+	if err != nil {
 		WriteError(h.logger, w, r, err)
 		return
 	}
 
-	writeXML(h.logger, w, r, http.StatusOK, result)
+	writeXML(h.logger, w, r, http.StatusOK, &ListBucketsResult{
+		Owner:   owner,
+		Buckets: buckets,
+	})
 }

@@ -9,23 +9,16 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-type GetObjectResult struct {
-	Name    string        `xml:"Name"`
-	ETag    string        `xml:"ETag"`
-	ModTime time.Time     `xml:"ModTime"`
-	Content io.ReadSeeker `xml:"Content"`
-}
-
 type ObjectController interface {
-	GetObject(r *http.Request, bucket, key string, result *GetObjectResult) error
-	PutObject(r *http.Request, bucket, key string, reader io.Reader) (string, error)
+	GetObject(r *http.Request, bucket, key string) (name string, etag string, modTime time.Time, content io.ReadSeeker, err error)
+	PutObject(r *http.Request, bucket, key string, reader io.Reader) (etag string, err error)
 	DeleteObject(r *http.Request, bucket, key string) error
 }
 
 type UnimplementedObjectController struct{}
 
-func (c UnimplementedObjectController) GetObject(r *http.Request, bucket, key string, result *GetObjectResult) error {
-	return NotImplementedError(r)
+func (c UnimplementedObjectController) GetObject(r *http.Request, bucket, key string) (name string, etag string, modTime time.Time, content io.ReadSeeker, err error) {
+	return "", "", time.Time{}, nil, NotImplementedError(r)
 }
 
 func (c UnimplementedObjectController) PutObject(r *http.Request, bucket, key string, reader io.Reader) (string, error) {
@@ -46,18 +39,17 @@ func (h *objectHandler) get(w http.ResponseWriter, r *http.Request) {
 	bucket := vars["bucket"]
 	key := vars["key"]
 
-	result := &GetObjectResult{}
-
-	if err := h.controller.GetObject(r, bucket, key, result); err != nil {
+	name, etag, modTime, content, err := h.controller.GetObject(r, bucket, key)
+	if err != nil {
 		WriteError(h.logger, w, r, err)
 		return
 	}
 
-	if result.ETag != "" {
-		w.Header().Set("ETag", addETagQuotes(result.ETag))
+	if etag != "" {
+		w.Header().Set("ETag", addETagQuotes(etag))
 	}
 
-	http.ServeContent(w, r, result.Name, result.ModTime, result.Content)
+	http.ServeContent(w, r, name, modTime, content)
 }
 
 func (h *objectHandler) put(w http.ResponseWriter, r *http.Request) {

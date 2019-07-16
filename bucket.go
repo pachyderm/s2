@@ -1,6 +1,7 @@
 package s2
 
 import (
+	"encoding/xml"
 	"net/http"
 	"time"
 
@@ -10,14 +11,13 @@ import (
 
 const defaultMaxKeys int = 1000
 
-// LocationConstraint is an XML-encodable location specification of a bucket
-type LocationConstraint struct {
-	Location string `xml:",innerxml"`
+type GetLocationResult struct {
+	XMLName  xml.Name `xml:"LocationConstraint"`
+	Location string   `xml:",innerxml"`
 }
 
-// ListBucketResult is an XML-encodable listing of files/objects in a
-// repo/bucket
-type ListBucketResult struct {
+type ListObjectsResult struct {
+	XMLName        xml.Name         `xml:"ListBucketResult"`
 	Contents       []Contents       `xml:"Contents"`
 	CommonPrefixes []CommonPrefixes `xml:"CommonPrefixes"`
 	Delimiter      string           `xml:"Delimiter,omitempty"`
@@ -29,7 +29,7 @@ type ListBucketResult struct {
 	Prefix         string           `xml:"Prefix"`
 }
 
-func (r *ListBucketResult) IsFull() bool {
+func (r *ListObjectsResult) IsFull() bool {
 	return len(r.Contents)+len(r.CommonPrefixes) >= r.MaxKeys
 }
 
@@ -50,20 +50,20 @@ type CommonPrefixes struct {
 }
 
 type BucketController interface {
-	GetLocation(r *http.Request, bucket string, result *LocationConstraint) error
-	ListObjects(r *http.Request, bucket string, result *ListBucketResult) error
+	GetLocation(r *http.Request, bucket string) (location string, err error)
+	ListObjects(r *http.Request, bucket, prefix, marker, delimiter string, maxKeys int) (contents []Contents, commonPrefixes []CommonPrefixes, isTruncated bool, err error)
 	CreateBucket(r *http.Request, bucket string) error
 	DeleteBucket(r *http.Request, bucket string) error
 }
 
 type UnimplementedBucketController struct{}
 
-func (c UnimplementedBucketController) GetLocation(r *http.Request, bucket string, result *LocationConstraint) error {
-	return NotImplementedError(r)
+func (c UnimplementedBucketController) GetLocation(r *http.Request, bucket string) (location string, err error) {
+	return "", NotImplementedError(r)
 }
 
-func (c UnimplementedBucketController) ListObjects(r *http.Request, bucket string, result *ListBucketResult) error {
-	return NotImplementedError(r)
+func (c UnimplementedBucketController) ListObjects(r *http.Request, bucket, prefix, marker, delimiter string, maxKeys int) (contents []Contents, commonPrefixes []CommonPrefixes, isTruncated bool, err error) {
+	return nil, nil, false, NotImplementedError(r)
 }
 
 func (c UnimplementedBucketController) CreateBucket(r *http.Request, bucket string) error {
@@ -83,14 +83,15 @@ func (h bucketHandler) location(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	bucket := vars["bucket"]
 
-	result := &LocationConstraint{}
-
-	if err := h.controller.GetLocation(r, bucket, result); err != nil {
+	location, err := h.controller.GetLocation(r, bucket)
+	if err != nil {
 		WriteError(h.logger, w, r, err)
 		return
 	}
 
-	writeXML(h.logger, w, r, http.StatusOK, result)
+	writeXML(h.logger, w, r, http.StatusOK, &GetLocationResult{
+		Location: location,
+	})
 }
 
 func (h bucketHandler) get(w http.ResponseWriter, r *http.Request) {
@@ -103,22 +104,29 @@ func (h bucketHandler) get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := &ListBucketResult{
-		Name:        bucket,
-		Prefix:      r.FormValue("prefix"),
-		Marker:      r.FormValue("marker"),
-		Delimiter:   r.FormValue("delimiter"),
-		MaxKeys:     maxKeys,
-		IsTruncated: false,
-	}
+	prefix := r.FormValue("prefix")
+	marker := r.FormValue("marker")
+	delimiter := r.FormValue("delimiter")
 
-	if err := h.controller.ListObjects(r, bucket, result); err != nil {
+	contents, commonPrefixes, isTruncated, err := h.controller.ListObjects(r, bucket, prefix, marker, delimiter, maxKeys)
+	if err != nil {
 		WriteError(h.logger, w, r, err)
 		return
 	}
 
-	for _, contents := range result.Contents {
-		contents.ETag = addETagQuotes(contents.ETag)
+	for _, c := range contents {
+		c.ETag = addETagQuotes(c.ETag)
+	}
+
+	result := &ListObjectsResult{
+		Name:           bucket,
+		Prefix:         prefix,
+		Marker:         marker,
+		Delimiter:      delimiter,
+		MaxKeys:        maxKeys,
+		IsTruncated:    isTruncated,
+		Contents:       contents,
+		CommonPrefixes: commonPrefixes,
 	}
 
 	if result.IsTruncated {
