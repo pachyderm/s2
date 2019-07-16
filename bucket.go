@@ -34,6 +34,8 @@ type BucketController interface {
 	DeleteBucket(r *http.Request, bucket string) error
 }
 
+// unimplementedBucketController defines a controller that returns
+// `NotImplementedError` for all functionality
 type unimplementedBucketController struct{}
 
 func (c unimplementedBucketController) GetLocation(r *http.Request, bucket string) (location string, err error) {

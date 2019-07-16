@@ -19,6 +19,8 @@ type ServiceController interface {
 	ListBuckets(r *http.Request) (owner *User, buckets []Bucket, err error)
 }
 
+// unimplementedServiceController defines a controller that returns
+// `NotImplementedError` for all functionality
 type unimplementedServiceController struct{}
 
 func (c unimplementedServiceController) ListBuckets(r *http.Request) (owner *User, buckets []Bucket, err error) {

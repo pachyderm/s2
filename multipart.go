@@ -44,6 +44,8 @@ type MultipartController interface {
 	DeleteMultipartChunk(r *http.Request, bucket, key, uploadID string, partNumber int) error
 }
 
+// unimplementedMultipartController defines a controller that returns
+// `NotImplementedError` for all functionality
 type unimplementedMultipartController struct{}
 
 func (c unimplementedMultipartController) ListMultipart(r *http.Request, bucket, keyMarker, uploadIDMarker string, maxUploads int) (isTruncated bool, uploads []Upload, err error) {

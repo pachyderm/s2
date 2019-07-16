@@ -7,8 +7,9 @@ import (
 	"github.com/gorilla/mux"
 )
 
-// Error is an XML-encodable error response
+// Error is an XML marshalable error response
 type Error struct {
+	// HttpStatus is the HTTP status that will be set in the response
 	HttpStatus int    `xml:"-"`
 	Code       string `xml:"Code"`
 	Message    string `xml:"Message"`

@@ -15,6 +15,8 @@ type ObjectController interface {
 	DeleteObject(r *http.Request, bucket, key string) error
 }
 
+// unimplementedObjectController defines a controller that returns
+// `NotImplementedError` for all functionality
 type unimplementedObjectController struct{}
 
 func (c unimplementedObjectController) GetObject(r *http.Request, bucket, key string) (etag string, modTime time.Time, content io.ReadSeeker, err error) {
