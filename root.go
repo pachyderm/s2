@@ -8,11 +8,13 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// Bucket is an XML marshalable representation of a bucket
 type Bucket struct {
 	Name         string    `xml:"Name"`
 	CreationDate time.Time `xml:"CreationDate"`
 }
 
+// RootController is an interface defining root-level functionality
 type RootController interface {
 	ListBuckets(r *http.Request) (owner *User, buckets []Bucket, err error)
 }

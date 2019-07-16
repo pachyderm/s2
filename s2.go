@@ -62,6 +62,7 @@ func attachObjectRoutes(logger *logrus.Entry, router *mux.Router, handler *objec
 	router.Methods("DELETE").HandlerFunc(handler.del)
 }
 
+// S2 is the root struct used in the s2 library
 type S2 struct {
 	Root      RootController
 	Bucket    BucketController
@@ -70,6 +71,8 @@ type S2 struct {
 	logger    *logrus.Entry
 }
 
+// NewS2 creates a new S2 instance. One created, you set zero or more
+// attributes to implement various S3 functionality, then create a router.
 func NewS2(logger *logrus.Entry) *S2 {
 	return &S2{
 		Root:      UnimplementedRootController{},
@@ -80,6 +83,8 @@ func NewS2(logger *logrus.Entry) *S2 {
 	}
 }
 
+// requestIDMiddleware creates a middleware handler that adds a request ID to
+// every request.
 func (h *S2) requestIDMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
@@ -96,6 +101,7 @@ func (h *S2) requestIDMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// Router creates a new mux router.
 func (h *S2) Router() *mux.Router {
 	rootHandler := &rootHandler{
 		controller: h.Root,
