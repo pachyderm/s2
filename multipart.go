@@ -36,9 +36,9 @@ type Part struct {
 
 type MultipartController interface {
 	ListMultipart(r *http.Request, bucket, keyMarker, uploadIDMarker string, maxUploads int) (isTruncated bool, uploads []Upload, err error)
-	InitMultipart(r *http.Request, bucket, key string) (string, error)
+	InitMultipart(r *http.Request, bucket, key string) (etag string, err error)
 	AbortMultipart(r *http.Request, bucket, key, uploadID string) error
-	CompleteMultipart(r *http.Request, bucket, key, uploadID string, parts []Part) (loation, etag string, err error)
+	CompleteMultipart(r *http.Request, bucket, key, uploadID string, parts []Part) (location, etag string, err error)
 	ListMultipartChunks(r *http.Request, bucket, key, uploadID string, partNumberMarker, maxParts int) (initiator, owner *User, storageClass string, isTruncated bool, parts []Part, err error)
 	UploadMultipartChunk(r *http.Request, bucket, key, uploadID string, partNumber int, reader io.Reader) (etag string, err error)
 	DeleteMultipartChunk(r *http.Request, bucket, key, uploadID string, partNumber int) error
@@ -58,7 +58,7 @@ func (c UnimplementedMultipartController) AbortMultipart(r *http.Request, bucket
 	return NotImplementedError(r)
 }
 
-func (c UnimplementedMultipartController) CompleteMultipart(r *http.Request, bucket, key, uploadID string, parts []Part) (loation, etag string, err error) {
+func (c UnimplementedMultipartController) CompleteMultipart(r *http.Request, bucket, key, uploadID string, parts []Part) (location, etag string, err error) {
 	return "", "", NotImplementedError(r)
 }
 

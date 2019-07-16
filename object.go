@@ -10,19 +10,21 @@ import (
 )
 
 type ObjectController interface {
-	GetObject(r *http.Request, bucket, key string) (name string, etag string, modTime time.Time, content io.ReadSeeker, err error)
+	GetObject(r *http.Request, bucket, key string) (etag string, modTime time.Time, content io.ReadSeeker, err error)
 	PutObject(r *http.Request, bucket, key string, reader io.Reader) (etag string, err error)
 	DeleteObject(r *http.Request, bucket, key string) error
 }
 
 type UnimplementedObjectController struct{}
 
-func (c UnimplementedObjectController) GetObject(r *http.Request, bucket, key string) (name string, etag string, modTime time.Time, content io.ReadSeeker, err error) {
-	return "", "", time.Time{}, nil, NotImplementedError(r)
+func (c UnimplementedObjectController) GetObject(r *http.Request, bucket, key string) (etag string, modTime time.Time, content io.ReadSeeker, err error) {
+	err = NotImplementedError(r)
+	return
 }
 
-func (c UnimplementedObjectController) PutObject(r *http.Request, bucket, key string, reader io.Reader) (string, error) {
-	return "", NotImplementedError(r)
+func (c UnimplementedObjectController) PutObject(r *http.Request, bucket, key string, reader io.Reader) (etag string, err error) {
+	err = NotImplementedError(r)
+	return
 }
 
 func (c UnimplementedObjectController) DeleteObject(r *http.Request, bucket, key string) error {
@@ -39,7 +41,7 @@ func (h *objectHandler) get(w http.ResponseWriter, r *http.Request) {
 	bucket := vars["bucket"]
 	key := vars["key"]
 
-	name, etag, modTime, content, err := h.controller.GetObject(r, bucket, key)
+	etag, modTime, content, err := h.controller.GetObject(r, bucket, key)
 	if err != nil {
 		WriteError(h.logger, w, r, err)
 		return
@@ -49,7 +51,7 @@ func (h *objectHandler) get(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("ETag", addETagQuotes(etag))
 	}
 
-	http.ServeContent(w, r, name, modTime, content)
+	http.ServeContent(w, r, key, modTime, content)
 }
 
 func (h *objectHandler) put(w http.ResponseWriter, r *http.Request) {

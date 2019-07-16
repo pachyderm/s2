@@ -17,6 +17,8 @@ var (
     Epoch = time.Unix(0, 0)
 
     StorageClass = "STANDARD"
+
+    Location = "pachydermia"
 )
 
 type Storage struct {

@@ -7,37 +7,37 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"time"
 
 	"github.com/pachyderm/s2"
 	"github.com/pachyderm/s2/example/models"
 )
 
-func (c Controller) GetObject(r *http.Request, name, key string, result *s2.GetObjectResult) error {
-	c.logger.Tracef("GetObject: name=%+v, key=%+v, result=%+v", name, key, result)
+func (c Controller) GetObject(r *http.Request, name, key string) (etag string, modTime time.Time, content io.ReadSeeker, err error) {
+	c.logger.Tracef("GetObject: name=%+v, key=%+v", name, key)
 
 	c.DB.Lock.RLock()
 	defer c.DB.Lock.RUnlock()
 
 	bucket, err := c.DB.Bucket(r, name)
 	if err != nil {
-		return err
+		return
 	}
 
 	object, err := bucket.Object(r, key)
 	if err != nil {
-		return err
+		return
 	}
 
 	hash := md5.Sum(object)
 
-	result.Name = key
-	result.ETag = fmt.Sprintf("%x", hash)
-	result.ModTime = models.Epoch
-	result.Content = bytes.NewReader(object)
-	return nil
+	etag = fmt.Sprintf("%x", hash)
+	modTime = models.Epoch
+	content = bytes.NewReader(object)
+	return
 }
 
-func (c Controller) PutObject(r *http.Request, name, key string, reader io.Reader) (string, error) {
+func (c Controller) PutObject(r *http.Request, name, key string, reader io.Reader) (etag string, err error) {
 	c.logger.Tracef("PutObject: name=%+v, key=%+v", name, key)
 
 	c.DB.Lock.Lock()
@@ -45,17 +45,19 @@ func (c Controller) PutObject(r *http.Request, name, key string, reader io.Reade
 
 	bucket, err := c.DB.Bucket(r, name)
 	if err != nil {
-		return "", err
+		return
 	}
 
 	bytes, err := ioutil.ReadAll(reader)
 	if err != nil {
-		return "", s2.InternalError(r, err)
+		err = s2.InternalError(r, err)
+		return
 	}
 
-	hash := md5.Sum(bytes)
 	bucket.Objects[key] = bytes
-	return fmt.Sprintf("%x", hash), nil
+
+	etag = fmt.Sprintf("%x", md5.Sum(bytes))
+	return
 }
 
 func (c Controller) DeleteObject(r *http.Request, name, key string) error {
