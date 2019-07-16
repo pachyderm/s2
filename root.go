@@ -14,23 +14,23 @@ type Bucket struct {
 	CreationDate time.Time `xml:"CreationDate"`
 }
 
-// RootController is an interface defining root-level functionality
-type RootController interface {
+// ServiceController is an interface defining service-level functionality
+type ServiceController interface {
 	ListBuckets(r *http.Request) (owner *User, buckets []Bucket, err error)
 }
 
-type UnimplementedRootController struct{}
+type UnimplementedServiceController struct{}
 
-func (c UnimplementedRootController) ListBuckets(r *http.Request) (owner *User, buckets []Bucket, err error) {
+func (c UnimplementedServiceController) ListBuckets(r *http.Request) (owner *User, buckets []Bucket, err error) {
 	return nil, nil, NotImplementedError(r)
 }
 
-type rootHandler struct {
-	controller RootController
+type serviceHandler struct {
+	controller ServiceController
 	logger     *logrus.Entry
 }
 
-func (h *rootHandler) get(w http.ResponseWriter, r *http.Request) {
+func (h *serviceHandler) get(w http.ResponseWriter, r *http.Request) {
 	owner, buckets, err := h.controller.ListBuckets(r)
 	if err != nil {
 		WriteError(h.logger, w, r, err)

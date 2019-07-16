@@ -64,7 +64,7 @@ func attachObjectRoutes(logger *logrus.Entry, router *mux.Router, handler *objec
 
 // S2 is the root struct used in the s2 library
 type S2 struct {
-	Root      RootController
+	Service   ServiceController
 	Bucket    BucketController
 	Object    ObjectController
 	Multipart MultipartController
@@ -75,7 +75,7 @@ type S2 struct {
 // attributes to implement various S3 functionality, then create a router.
 func NewS2(logger *logrus.Entry) *S2 {
 	return &S2{
-		Root:      UnimplementedRootController{},
+		Service:   UnimplementedServiceController{},
 		Bucket:    UnimplementedBucketController{},
 		Object:    UnimplementedObjectController{},
 		Multipart: UnimplementedMultipartController{},
@@ -103,8 +103,8 @@ func (h *S2) requestIDMiddleware(next http.Handler) http.Handler {
 
 // Router creates a new mux router.
 func (h *S2) Router() *mux.Router {
-	rootHandler := &rootHandler{
-		controller: h.Root,
+	serviceHandler := &serviceHandler{
+		controller: h.Service,
 		logger:     h.logger,
 	}
 	bucketHandler := &bucketHandler{
@@ -123,7 +123,7 @@ func (h *S2) Router() *mux.Router {
 	router := mux.NewRouter()
 	router.Use(h.requestIDMiddleware)
 
-	router.Path(`/`).Methods("GET", "HEAD").HandlerFunc(rootHandler.get)
+	router.Path(`/`).Methods("GET", "HEAD").HandlerFunc(serviceHandler.get)
 
 	// Bucket-related routes. Repo validation regex is the same that the aws
 	// cli uses. There's two routers - one with a trailing a slash and one
