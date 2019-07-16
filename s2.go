@@ -75,10 +75,10 @@ type S2 struct {
 // attributes to implement various S3 functionality, then create a router.
 func NewS2(logger *logrus.Entry) *S2 {
 	return &S2{
-		Service:   UnimplementedServiceController{},
-		Bucket:    UnimplementedBucketController{},
-		Object:    UnimplementedObjectController{},
-		Multipart: UnimplementedMultipartController{},
+		Service:   unimplementedServiceController{},
+		Bucket:    unimplementedBucketController{},
+		Object:    unimplementedObjectController{},
+		Multipart: unimplementedMultipartController{},
 		logger:    logger,
 	}
 }

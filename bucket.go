@@ -34,21 +34,21 @@ type BucketController interface {
 	DeleteBucket(r *http.Request, bucket string) error
 }
 
-type UnimplementedBucketController struct{}
+type unimplementedBucketController struct{}
 
-func (c UnimplementedBucketController) GetLocation(r *http.Request, bucket string) (location string, err error) {
+func (c unimplementedBucketController) GetLocation(r *http.Request, bucket string) (location string, err error) {
 	return "", NotImplementedError(r)
 }
 
-func (c UnimplementedBucketController) ListObjects(r *http.Request, bucket, prefix, marker, delimiter string, maxKeys int) (contents []Contents, commonPrefixes []CommonPrefixes, isTruncated bool, err error) {
+func (c unimplementedBucketController) ListObjects(r *http.Request, bucket, prefix, marker, delimiter string, maxKeys int) (contents []Contents, commonPrefixes []CommonPrefixes, isTruncated bool, err error) {
 	return nil, nil, false, NotImplementedError(r)
 }
 
-func (c UnimplementedBucketController) CreateBucket(r *http.Request, bucket string) error {
+func (c unimplementedBucketController) CreateBucket(r *http.Request, bucket string) error {
 	return NotImplementedError(r)
 }
 
-func (c UnimplementedBucketController) DeleteBucket(r *http.Request, bucket string) error {
+func (c unimplementedBucketController) DeleteBucket(r *http.Request, bucket string) error {
 	return NotImplementedError(r)
 }
 

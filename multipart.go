@@ -44,33 +44,33 @@ type MultipartController interface {
 	DeleteMultipartChunk(r *http.Request, bucket, key, uploadID string, partNumber int) error
 }
 
-type UnimplementedMultipartController struct{}
+type unimplementedMultipartController struct{}
 
-func (c UnimplementedMultipartController) ListMultipart(r *http.Request, bucket, keyMarker, uploadIDMarker string, maxUploads int) (isTruncated bool, uploads []Upload, err error) {
+func (c unimplementedMultipartController) ListMultipart(r *http.Request, bucket, keyMarker, uploadIDMarker string, maxUploads int) (isTruncated bool, uploads []Upload, err error) {
 	return false, nil, NotImplementedError(r)
 }
 
-func (c UnimplementedMultipartController) InitMultipart(r *http.Request, bucket, key string) (string, error) {
+func (c unimplementedMultipartController) InitMultipart(r *http.Request, bucket, key string) (string, error) {
 	return "", NotImplementedError(r)
 }
 
-func (c UnimplementedMultipartController) AbortMultipart(r *http.Request, bucket, key, uploadID string) error {
+func (c unimplementedMultipartController) AbortMultipart(r *http.Request, bucket, key, uploadID string) error {
 	return NotImplementedError(r)
 }
 
-func (c UnimplementedMultipartController) CompleteMultipart(r *http.Request, bucket, key, uploadID string, parts []Part) (location, etag string, err error) {
+func (c unimplementedMultipartController) CompleteMultipart(r *http.Request, bucket, key, uploadID string, parts []Part) (location, etag string, err error) {
 	return "", "", NotImplementedError(r)
 }
 
-func (c UnimplementedMultipartController) ListMultipartChunks(r *http.Request, bucket, key, uploadID string, partNumberMarker, maxcParts int) (initiator, owner *User, storageClass string, isTruncated bool, parts []Part, err error) {
+func (c unimplementedMultipartController) ListMultipartChunks(r *http.Request, bucket, key, uploadID string, partNumberMarker, maxcParts int) (initiator, owner *User, storageClass string, isTruncated bool, parts []Part, err error) {
 	return nil, nil, "", false, nil, NotImplementedError(r)
 }
 
-func (c UnimplementedMultipartController) UploadMultipartChunk(r *http.Request, bucket, key, uploadID string, partNumber int, reader io.Reader) (etag string, err error) {
+func (c unimplementedMultipartController) UploadMultipartChunk(r *http.Request, bucket, key, uploadID string, partNumber int, reader io.Reader) (etag string, err error) {
 	return "", NotImplementedError(r)
 }
 
-func (c UnimplementedMultipartController) DeleteMultipartChunk(r *http.Request, bucket, key, uploadID string, partNumber int) error {
+func (c unimplementedMultipartController) DeleteMultipartChunk(r *http.Request, bucket, key, uploadID string, partNumber int) error {
 	return NotImplementedError(r)
 }
 

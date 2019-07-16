@@ -19,9 +19,9 @@ type ServiceController interface {
 	ListBuckets(r *http.Request) (owner *User, buckets []Bucket, err error)
 }
 
-type UnimplementedServiceController struct{}
+type unimplementedServiceController struct{}
 
-func (c UnimplementedServiceController) ListBuckets(r *http.Request) (owner *User, buckets []Bucket, err error) {
+func (c unimplementedServiceController) ListBuckets(r *http.Request) (owner *User, buckets []Bucket, err error) {
 	return nil, nil, NotImplementedError(r)
 }
 

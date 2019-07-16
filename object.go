@@ -15,19 +15,19 @@ type ObjectController interface {
 	DeleteObject(r *http.Request, bucket, key string) error
 }
 
-type UnimplementedObjectController struct{}
+type unimplementedObjectController struct{}
 
-func (c UnimplementedObjectController) GetObject(r *http.Request, bucket, key string) (etag string, modTime time.Time, content io.ReadSeeker, err error) {
+func (c unimplementedObjectController) GetObject(r *http.Request, bucket, key string) (etag string, modTime time.Time, content io.ReadSeeker, err error) {
 	err = NotImplementedError(r)
 	return
 }
 
-func (c UnimplementedObjectController) PutObject(r *http.Request, bucket, key string, reader io.Reader) (etag string, err error) {
+func (c unimplementedObjectController) PutObject(r *http.Request, bucket, key string, reader io.Reader) (etag string, err error) {
 	err = NotImplementedError(r)
 	return
 }
 
-func (c UnimplementedObjectController) DeleteObject(r *http.Request, bucket, key string) error {
+func (c unimplementedObjectController) DeleteObject(r *http.Request, bucket, key string) error {
 	return NotImplementedError(r)
 }
 
