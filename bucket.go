@@ -11,28 +11,6 @@ import (
 
 const defaultMaxKeys int = 1000
 
-type GetLocationResult struct {
-	XMLName  xml.Name `xml:"LocationConstraint"`
-	Location string   `xml:",innerxml"`
-}
-
-type ListObjectsResult struct {
-	XMLName        xml.Name         `xml:"ListBucketResult"`
-	Contents       []Contents       `xml:"Contents"`
-	CommonPrefixes []CommonPrefixes `xml:"CommonPrefixes"`
-	Delimiter      string           `xml:"Delimiter,omitempty"`
-	IsTruncated    bool             `xml:"IsTruncated"`
-	Marker         string           `xml:"Marker"`
-	MaxKeys        int              `xml:"MaxKeys"`
-	Name           string           `xml:"Name"`
-	NextMarker     string           `xml:"NextMarker,omitempty"`
-	Prefix         string           `xml:"Prefix"`
-}
-
-func (r *ListObjectsResult) IsFull() bool {
-	return len(r.Contents)+len(r.CommonPrefixes) >= r.MaxKeys
-}
-
 // Contents is an individual file/object
 type Contents struct {
 	Key          string    `xml:"Key"`
@@ -89,7 +67,10 @@ func (h bucketHandler) location(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeXML(h.logger, w, r, http.StatusOK, &GetLocationResult{
+	writeXML(h.logger, w, r, http.StatusOK, struct {
+		XMLName  xml.Name `xml:"LocationConstraint"`
+		Location string   `xml:",innerxml"`
+	}{
 		Location: location,
 	})
 }
@@ -118,7 +99,18 @@ func (h bucketHandler) get(w http.ResponseWriter, r *http.Request) {
 		c.ETag = addETagQuotes(c.ETag)
 	}
 
-	result := &ListObjectsResult{
+	result := struct {
+		XMLName        xml.Name         `xml:"ListBucketResult"`
+		Contents       []Contents       `xml:"Contents"`
+		CommonPrefixes []CommonPrefixes `xml:"CommonPrefixes"`
+		Delimiter      string           `xml:"Delimiter,omitempty"`
+		IsTruncated    bool             `xml:"IsTruncated"`
+		Marker         string           `xml:"Marker"`
+		MaxKeys        int              `xml:"MaxKeys"`
+		Name           string           `xml:"Name"`
+		NextMarker     string           `xml:"NextMarker,omitempty"`
+		Prefix         string           `xml:"Prefix"`
+	}{
 		Name:           bucket,
 		Prefix:         prefix,
 		Marker:         marker,

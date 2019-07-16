@@ -8,12 +8,6 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-type ListBucketsResult struct {
-	XMLName xml.Name `xml:"ListAllMyBucketsResult"`
-	Owner   *User    `xml:"Owner"`
-	Buckets []Bucket `xml:"Buckets>Bucket"`
-}
-
 type Bucket struct {
 	Name         string    `xml:"Name"`
 	CreationDate time.Time `xml:"CreationDate"`
@@ -41,7 +35,11 @@ func (h *rootHandler) get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeXML(h.logger, w, r, http.StatusOK, &ListBucketsResult{
+	writeXML(h.logger, w, r, http.StatusOK, struct {
+		XMLName xml.Name `xml:"ListAllMyBucketsResult"`
+		Owner   *User    `xml:"Owner"`
+		Buckets []Bucket `xml:"Buckets>Bucket"`
+	}{
 		Owner:   owner,
 		Buckets: buckets,
 	})

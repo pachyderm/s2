@@ -20,30 +20,6 @@ const (
 	completeMultipartPing = 10 * time.Second
 )
 
-type ListMultipartResult struct {
-	XMLName            xml.Name `xml:"ListMultipartUploadsResult"`
-	Bucket             string   `xml:"Bucket"`
-	KeyMarker          string   `xml:"KeyMarker"`
-	UploadIDMarker     string   `xml:"UploadIdMarker"`
-	NextKeyMarker      string   `xml:"NextKeyMarker"`
-	NextUploadIDMarker string   `xml:"NextUploadIdMarker"`
-	MaxUploads         int      `xml:"MaxUploads"`
-	IsTruncated        bool     `xml:"IsTruncated"`
-	Uploads            []Upload `xml:"Upload"`
-}
-
-func (r *ListMultipartResult) IsFull() bool {
-	return len(r.Uploads) >= r.MaxUploads
-}
-
-// InitiateMultipartUploadResult is an XML-encodable response to initiate a
-// new multipart upload
-type InitiateMultipartUploadResult struct {
-	Bucket   string `xml:"Bucket"`
-	Key      string `xml:"Key"`
-	UploadID string `xml:"UploadId"`
-}
-
 type Upload struct {
 	Key          string    `xml:"Key"`
 	UploadID     string    `xml:"UploadId"`
@@ -53,39 +29,9 @@ type Upload struct {
 	Initiated    time.Time `xml:"Initiated"`
 }
 
-type CompleteMultipartUpload struct {
-	Parts []Part `xml:"Part"`
-}
-
 type Part struct {
 	PartNumber int    `xml:"PartNumber"`
 	ETag       string `xml:"ETag"`
-}
-
-type CompleteMultipartResult struct {
-	XMLName  xml.Name `xml:"CompleteMultipartUploadResult"`
-	Location string   `xml:"Location"`
-	Bucket   string   `xml:"Bucket"`
-	Key      string   `xml:"Key"`
-	ETag     string   `xml:"ETag"`
-}
-
-type ListPartsResult struct {
-	Bucket               string `xml:"Bucket"`
-	Key                  string `xml:"Key"`
-	UploadID             string `xml:"UploadId"`
-	Initiator            *User  `xml:"Initiator"`
-	Owner                *User  `xml:"Owner"`
-	StorageClass         string `xml:"StorageClass"`
-	PartNumberMarker     int    `xml:"PartNumberMarker"`
-	NextPartNumberMarker int    `xml:"NextPartNumberMarker"`
-	MaxParts             int    `xml:"MaxParts"`
-	IsTruncated          bool   `xml:"IsTruncated"`
-	Parts                []Part `xml:"Part"`
-}
-
-func (r *ListPartsResult) IsFull() bool {
-	return len(r.Parts) >= r.MaxParts
 }
 
 type MultipartController interface {
@@ -155,7 +101,17 @@ func (h *multipartHandler) list(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := &ListMultipartResult{
+	result := struct {
+		XMLName            xml.Name `xml:"ListMultipartUploadsResult"`
+		Bucket             string   `xml:"Bucket"`
+		KeyMarker          string   `xml:"KeyMarker"`
+		UploadIDMarker     string   `xml:"UploadIdMarker"`
+		NextKeyMarker      string   `xml:"NextKeyMarker"`
+		NextUploadIDMarker string   `xml:"NextUploadIdMarker"`
+		MaxUploads         int      `xml:"MaxUploads"`
+		IsTruncated        bool     `xml:"IsTruncated"`
+		Uploads            []Upload `xml:"Upload"`
+	}{
 		Bucket:         bucket,
 		KeyMarker:      keyMarker,
 		UploadIDMarker: uploadIDMarker,
@@ -197,7 +153,20 @@ func (h *multipartHandler) listChunks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := &ListPartsResult{
+	result := struct {
+		XMLName              xml.Name `xml:"ListPartsResult"`
+		Bucket               string   `xml:"Bucket"`
+		Key                  string   `xml:"Key"`
+		UploadID             string   `xml:"UploadId"`
+		Initiator            *User    `xml:"Initiator"`
+		Owner                *User    `xml:"Owner"`
+		StorageClass         string   `xml:"StorageClass"`
+		PartNumberMarker     int      `xml:"PartNumberMarker"`
+		NextPartNumberMarker int      `xml:"NextPartNumberMarker"`
+		MaxParts             int      `xml:"MaxParts"`
+		IsTruncated          bool     `xml:"IsTruncated"`
+		Parts                []Part   `xml:"Part"`
+	}{
 		Bucket:           bucket,
 		Key:              key,
 		UploadID:         uploadID,
@@ -228,7 +197,12 @@ func (h *multipartHandler) init(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := InitiateMultipartUploadResult{
+	result := struct {
+		XMLName  xml.Name `xml:"InitiateMultipartUploadResult"`
+		Bucket   string   `xml:"Bucket"`
+		Key      string   `xml:"Key"`
+		UploadID string   `xml:"UploadId"`
+	}{
 		Bucket:   bucket,
 		Key:      key,
 		UploadID: uploadID,
@@ -250,7 +224,10 @@ func (h *multipartHandler) complete(w http.ResponseWriter, r *http.Request) {
 		WriteError(h.logger, w, r, err)
 		return
 	}
-	payload := CompleteMultipartUpload{}
+	payload := struct {
+		XMLName xml.Name `xml:"CompleteMultipartUpload"`
+		Parts   []Part   `xml:"Part"`
+	}{}
 	err = xml.Unmarshal(bodyBytes, &payload)
 	if err != nil {
 		WriteError(h.logger, w, r, MalformedXMLError(r))
@@ -310,7 +287,13 @@ func (h *multipartHandler) complete(w http.ResponseWriter, r *http.Request) {
 					WriteError(h.logger, w, r, s3Error)
 				}
 			} else {
-				result := &CompleteMultipartResult{
+				result := struct {
+					XMLName  xml.Name `xml:"CompleteMultipartUploadResult"`
+					Location string   `xml:"Location"`
+					Bucket   string   `xml:"Bucket"`
+					Key      string   `xml:"Key"`
+					ETag     string   `xml:"ETag"`
+				}{
 					Bucket:   bucket,
 					Key:      key,
 					Location: value.location,
