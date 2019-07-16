@@ -9,8 +9,8 @@ import (
 
 // Error is an XML marshalable error response
 type Error struct {
-	// HttpStatus is the HTTP status that will be set in the response
-	HttpStatus int    `xml:"-"`
+	// HTTPStatus is the HTTP status that will be set in the response
+	HTTPStatus int    `xml:"-"`
 	Code       string `xml:"Code"`
 	Message    string `xml:"Message"`
 	Resource   string `xml:"Resource"`
@@ -22,7 +22,7 @@ func NewError(r *http.Request, httpStatus int, code string, message string) *Err
 	requestID := vars["requestID"]
 
 	return &Error{
-		HttpStatus: httpStatus,
+		HTTPStatus: httpStatus,
 		Code:       code,
 		Message:    message,
 		Resource:   r.URL.Path,
