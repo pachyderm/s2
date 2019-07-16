@@ -20,6 +20,8 @@ const (
 	completeMultipartPing = 10 * time.Second
 )
 
+// Upload is an XML marshalable representation of an in-progress multipart
+// upload
 type Upload struct {
 	Key          string    `xml:"Key"`
 	UploadID     string    `xml:"UploadId"`
@@ -29,18 +31,33 @@ type Upload struct {
 	Initiated    time.Time `xml:"Initiated"`
 }
 
+// Part is an XML marshalable representation of a chunk of an in-progress
+// multipart upload
 type Part struct {
 	PartNumber int    `xml:"PartNumber"`
 	ETag       string `xml:"ETag"`
 }
 
+// MultipartController is an interface that specifies multipart-related
+// functionality
 type MultipartController interface {
+	// ListMultipart lists in-progress multipart uploads in a bucket
 	ListMultipart(r *http.Request, bucket, keyMarker, uploadIDMarker string, maxUploads int) (isTruncated bool, uploads []Upload, err error)
+	// InitMultipart initializes a new multipart upload
 	InitMultipart(r *http.Request, bucket, key string) (etag string, err error)
+	// AbortMultipart aborts an in-progress multipart upload
 	AbortMultipart(r *http.Request, bucket, key, uploadID string) error
+	// CompleteMultipart finishes a multipart upload
 	CompleteMultipart(r *http.Request, bucket, key, uploadID string, parts []Part) (location, etag string, err error)
+	// ListMultipartChunks lists the constituent chunks of an in-progress
+	// multipart upload
 	ListMultipartChunks(r *http.Request, bucket, key, uploadID string, partNumberMarker, maxParts int) (initiator, owner *User, storageClass string, isTruncated bool, parts []Part, err error)
+	// UploadMultipartChunk uploads a chunk of an in-progress multipart upload
 	UploadMultipartChunk(r *http.Request, bucket, key, uploadID string, partNumber int, reader io.Reader) (etag string, err error)
+	// DeleteMultipartChunk deletes a chunk of an in-progress multipart
+	// upload. This is not exposed directly through the API, but rather to
+	// remove an uploaded multipart chunk if an issue occurred after it
+	// finished uploading.
 	DeleteMultipartChunk(r *http.Request, bucket, key, uploadID string, partNumber int) error
 }
 

@@ -16,6 +16,7 @@ type Bucket struct {
 
 // ServiceController is an interface defining service-level functionality
 type ServiceController interface {
+	// ListBuckets lists all buckets
 	ListBuckets(r *http.Request) (owner *User, buckets []Bucket, err error)
 }
 

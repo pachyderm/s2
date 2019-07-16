@@ -9,9 +9,13 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// ObjectController is an interface that specifies object-level functionality.
 type ObjectController interface {
+	// GetObject gets an object
 	GetObject(r *http.Request, bucket, key string) (etag string, modTime time.Time, content io.ReadSeeker, err error)
+	// PutObject sets an object
 	PutObject(r *http.Request, bucket, key string, reader io.Reader) (etag string, err error)
+	// DeleteObject deletes an object
 	DeleteObject(r *http.Request, bucket, key string) error
 }
 

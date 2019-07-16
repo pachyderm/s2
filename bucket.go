@@ -21,16 +21,25 @@ type Contents struct {
 	Owner        User      `xml:"Owner"`
 }
 
-// CommonPrefixes is an individual PFS directory
+// CommonPrefixes specifies a common prefix of S3 keys. This is akin to a
+// directory.
 type CommonPrefixes struct {
 	Prefix string `xml:"Prefix"`
 	Owner  User   `xml:"Owner"`
 }
 
+// BucketController is an interface that specifies bucket-level functionality.
 type BucketController interface {
+	// GetLocation gets the location of a bucket
 	GetLocation(r *http.Request, bucket string) (location string, err error)
+
+	// ListObjects lists objects within a bucket
 	ListObjects(r *http.Request, bucket, prefix, marker, delimiter string, maxKeys int) (contents []Contents, commonPrefixes []CommonPrefixes, isTruncated bool, err error)
+
+	// CreateBucket creates a bucket
 	CreateBucket(r *http.Request, bucket string) error
+
+	// DeleteBucket deletes a bucket
 	DeleteBucket(r *http.Request, bucket string) error
 }
 
