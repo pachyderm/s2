@@ -7,19 +7,19 @@ import (
 	"github.com/pachyderm/s2/example/models"
 )
 
-func (c Controller) ListBuckets(r *http.Request, result *s2.ListAllMyBucketsResult) error {
-	c.logger.Tracef("ListBuckets: %+v", result)
+func (c Controller) ListBuckets(r *http.Request) (owner *s2.User, buckets []s2.Bucket, err error) {
+	c.logger.Tracef("ListBuckets")
 
 	c.DB.Lock.RLock()
 	defer c.DB.Lock.RUnlock()
-	result.Owner = models.GlobalUser
 
 	for bucket := range c.DB.Buckets {
-		result.Buckets = append(result.Buckets, s2.Bucket{
+		buckets = append(buckets, s2.Bucket{
 			Name:         bucket,
 			CreationDate: models.Epoch,
 		})
 	}
 
-	return nil
+	owner = &models.GlobalUser
+	return
 }

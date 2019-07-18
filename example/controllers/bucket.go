@@ -12,24 +12,27 @@ import (
 	"github.com/pachyderm/s2/example/models"
 )
 
-func (c Controller) GetLocation(r *http.Request, name string, result *s2.LocationConstraint) error {
-	result.Location = "pachydermia"
-	return nil
+func (c Controller) GetLocation(r *http.Request, name string) (location string, err error) {
+	c.logger.Tracef("GetLocation: %+v", name)
+	return models.Location, nil
 }
 
 // Lists bucket contents. Note that this doesn't support common prefixes or
 // delimiters.
-func (c Controller) ListObjects(r *http.Request, name string, result *s2.ListBucketResult) error {
+func (c Controller) ListObjects(r *http.Request, name, prefix, marker, delimiter string, maxKeys int) (contents []s2.Contents, commonPrefixes []s2.CommonPrefixes, isTruncated bool, err error) {
+	c.logger.Tracef("ListObjects: name=%+v, prefix=%+v, marker=%+v, delimiter=%+v, maxKeys=%+v", name, prefix, marker, delimiter, maxKeys)
+
 	c.DB.Lock.RLock()
 	defer c.DB.Lock.RUnlock()
 
-	if result.Delimiter != "" {
-		return s2.NotImplementedError(r)
+	if delimiter != "" {
+		err = s2.NotImplementedError(r)
+		return
 	}
 
 	bucket, err := c.DB.Bucket(r, name)
 	if err != nil {
-		return err
+		return
 	}
 
 	keys := []string{}
@@ -40,37 +43,39 @@ func (c Controller) ListObjects(r *http.Request, name string, result *s2.ListBuc
 	sort.Strings(keys)
 
 	for _, key := range keys {
-		if key <= result.Marker {
+		if key <= marker {
 			continue
 		}
-		if !strings.HasPrefix(key, result.Prefix) {
+		if !strings.HasPrefix(key, prefix) {
 			break
 		}
 
-		if result.IsFull() {
-			if result.MaxKeys > 0 {
-				result.IsTruncated = true
+		if len(contents)+len(commonPrefixes) >= maxKeys {
+			if maxKeys > 0 {
+				isTruncated = true
 			}
 			break
 		}
 
-		contents := bucket.Objects[key]
-		hash := md5.Sum(contents)
+		bytes := bucket.Objects[key]
+		hash := md5.Sum(bytes)
 
-		result.Contents = append(result.Contents, s2.Contents{
+		contents = append(contents, s2.Contents{
 			Key:          key,
 			LastModified: models.Epoch,
 			ETag:         fmt.Sprintf("%x", hash),
-			Size:         uint64(len(contents)),
+			Size:         uint64(len(bytes)),
 			StorageClass: models.StorageClass,
 			Owner:        models.GlobalUser,
 		})
 	}
 
-	return nil
+	return
 }
 
 func (c Controller) CreateBucket(r *http.Request, name string) error {
+	c.logger.Tracef("CreateBucket: %+v", name)
+
 	c.DB.Lock.Lock()
 	defer c.DB.Lock.Unlock()
 
@@ -84,6 +89,8 @@ func (c Controller) CreateBucket(r *http.Request, name string) error {
 }
 
 func (c Controller) DeleteBucket(r *http.Request, name string) error {
+	c.logger.Tracef("DeleteBucket: %+v", name)
+
 	c.DB.Lock.Lock()
 	defer c.DB.Lock.Unlock()
 
