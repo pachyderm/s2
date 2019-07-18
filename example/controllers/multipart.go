@@ -78,7 +78,7 @@ func (c Controller) ListMultipart(r *http.Request, name, keyMarker, uploadIDMark
 
 func (c Controller) InitMultipart(r *http.Request, name, key string) (uploadID string, err error) {
 	c.logger.Tracef("InitMultipart: name=%+v, key=%+v", name, key)
-	uploadID := randomString(10)
+	uploadID = randomString(10)
 
 	c.DB.Lock.Lock()
 	defer c.DB.Lock.Unlock()
