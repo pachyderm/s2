@@ -13,8 +13,6 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-const unhashedPayload = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-
 var bucketNameValidator = regexp.MustCompile(`^/[a-zA-Z0-9\-_\.]{1,255}/`)
 var authHeaderValidator = regexp.MustCompile(`^AWS4-HMAC-SHA256 Credential=([^/]+)/([^/]+)/([^/]+)/s3/aws4_request, SignedHeaders=([^,]+), Signature=(.+)$`)
 
@@ -118,12 +116,6 @@ func (h *S2) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h.logger.Debugf("headers: %v", r.Header)
 
-		payloadHash := r.Header.Get("x-amz-content-sha256")
-		if payloadHash != unhashedPayload {
-			WriteError(h.logger, w, r, NotImplementedError(r))
-			return
-		}
-
 		authorization := r.Header.Get("authorization")
 
 		// parse auth-related headers
@@ -174,7 +166,7 @@ func (h *S2) authMiddleware(next http.Handler) http.Handler {
 			normQuery(r.URL.Query()),
 			signedHeaders.String(),
 			strings.Join(signedHeaderKeys, ";"),
-			unhashedPayload,
+			r.Header.Get("x-amz-content-sha256"),
 		}, "\n")
 
 		timestamp := r.Header.Get("x-amz-date")
