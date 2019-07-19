@@ -1,16 +1,22 @@
 package s2
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"net/http"
 	"regexp"
+	"sort"
+	"strings"
 
 	"github.com/gofrs/uuid"
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 )
 
+const unhashedPayload = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+
 var bucketNameValidator = regexp.MustCompile(`^/[a-zA-Z0-9\-_\.]{1,255}/`)
+var authHeaderValidator = regexp.MustCompile(`^AWS4-HMAC-SHA256 Credential=([^/]+)/([^/]+)/([^/]+)/s3/aws4_request, SignedHeaders=([^,]+), Signature=(.+)$`)
 
 func attachBucketRoutes(logger *logrus.Entry, router *mux.Router, handler *bucketHandler, multipartHandler *multipartHandler) {
 	router.Methods("GET", "PUT").Queries("accelerate", "").HandlerFunc(NotImplementedEndpoint(logger))
@@ -64,6 +70,7 @@ func attachObjectRoutes(logger *logrus.Entry, router *mux.Router, handler *objec
 
 // S2 is the root struct used in the s2 library
 type S2 struct {
+	Auth      AuthController
 	Service   ServiceController
 	Bucket    BucketController
 	Object    ObjectController
@@ -75,6 +82,7 @@ type S2 struct {
 // attributes to implement various S3 functionality, then create a router.
 func NewS2(logger *logrus.Entry) *S2 {
 	return &S2{
+		Auth:      nil,
 		Service:   unimplementedServiceController{},
 		Bucket:    unimplementedBucketController{},
 		Object:    unimplementedObjectController{},
@@ -101,6 +109,109 @@ func (h *S2) requestIDMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+func (h *S2) authMiddleware(next http.Handler) http.Handler {
+	// Verifies auth using AWS' signature v4. See here for a guide:
+	// https://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-header-based-auth.html
+	// Much of the code is built off of smartystreets/go-aws-auth, which does
+	// signing from the client-side:
+	// https://github.com/smartystreets/go-aws-auth
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h.logger.Debugf("headers: %v", r.Header)
+
+		payloadHash := r.Header.Get("x-amz-content-sha256")
+		if payloadHash != unhashedPayload {
+			WriteError(h.logger, w, r, NotImplementedError(r))
+			return
+		}
+
+		authorization := r.Header.Get("authorization")
+
+		// parse auth-related headers
+		match := authHeaderValidator.FindStringSubmatch(authorization)
+
+		if len(match) == 0 {
+			WriteError(h.logger, w, r, AuthorizationHeaderMalformedError(r))
+			return
+		}
+
+		accessKey := match[1]
+		date := match[2]
+		region := match[3]
+		signedHeaderKeys := strings.Split(match[4], ";")
+		sort.Strings(signedHeaderKeys)
+		expectedSignature := match[5]
+		h.logger.Debugf("accessKey: %s", accessKey)
+		h.logger.Debugf("date: %s", date)
+		h.logger.Debugf("region: %s", region)
+		h.logger.Debugf("signedHeaderKeys: %v", signedHeaderKeys)
+		h.logger.Debugf("expectedSignature: %s", expectedSignature)
+
+		// get the expected secret key
+		secretKey, err := h.Auth.SecretKey(r, accessKey, region)
+		if err != nil {
+			// Even though an error occurred, we'll continue to compute the
+			// signature. This prevents timing attacks.
+			h.logger.Errorf("Failed to get secret key for region=%s, accessKey=%s: %v", region, accessKey, err)
+			secretKey = ""
+		}
+
+		// step 1: construct the canonical request
+		var signedHeaders strings.Builder
+		for _, key := range signedHeaderKeys {
+			signedHeaders.WriteString(key)
+			signedHeaders.WriteString(":")
+			if key == "host" {
+				signedHeaders.WriteString(r.Host)
+			} else {
+				signedHeaders.WriteString(strings.TrimSpace(r.Header.Get(key)))
+			}
+			signedHeaders.WriteString("\n")
+		}
+
+		canonicalRequest := strings.Join([]string{
+			r.Method,
+			normURI(r.URL.Path),
+			normQuery(r.URL.Query()),
+			signedHeaders.String(),
+			strings.Join(signedHeaderKeys, ";"),
+			unhashedPayload,
+		}, "\n")
+
+		timestamp := r.Header.Get("x-amz-date")
+		stringToSign := fmt.Sprintf(
+			"AWS4-HMAC-SHA256\n%s\n%s/%s/s3/aws4_request\n%x",
+			timestamp,
+			date,
+			region,
+			sha256.Sum256([]byte(canonicalRequest)),
+		)
+
+		// step 2: construct the string to sign
+		dateKey := hmacSHA256([]byte("AWS4"+secretKey), date)
+		dateRegionKey := hmacSHA256(dateKey, region)
+		dateRegionServiceKey := hmacSHA256(dateRegionKey, "s3")
+		signingKey := hmacSHA256(dateRegionServiceKey, "aws4_request")
+		h.logger.Debugf("dateKey: %x", dateKey)
+		h.logger.Debugf("dateRegionKey: %x", dateRegionKey)
+		h.logger.Debugf("dateRegionServiceKey: %x", dateRegionServiceKey)
+
+		// step 3: construct & verify the signature
+		signature := hmacSHA256(signingKey, stringToSign)
+
+		h.logger.Debugf("canonicalRequest:\n%s", canonicalRequest)
+		h.logger.Debugf("stringToSign:\n%s", stringToSign)
+		h.logger.Debugf("signingKey: %x", signingKey)
+		h.logger.Debugf("signature: %x", signature)
+
+		if expectedSignature != fmt.Sprintf("%x", signature) {
+			WriteError(h.logger, w, r, SignatureDoesNotMatchError(r))
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
 // Router creates a new mux router.
 func (h *S2) Router() *mux.Router {
 	serviceHandler := &serviceHandler{
@@ -122,6 +233,10 @@ func (h *S2) Router() *mux.Router {
 
 	router := mux.NewRouter()
 	router.Use(h.requestIDMiddleware)
+
+	if h.Auth != nil {
+		router.Use(h.authMiddleware)
+	}
 
 	router.Path(`/`).Methods("GET", "HEAD").HandlerFunc(serviceHandler.get)
 

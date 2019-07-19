@@ -36,6 +36,12 @@ func (e *Error) Error() string {
 	return fmt.Sprintf("[%s] %s", e.Code, e.Message)
 }
 
+// AuthorizationHeaderMalformedError creates a new S3 error with a standard
+// AuthorizationHeaderMalformed S3 code.
+func AuthorizationHeaderMalformedError(r *http.Request) *Error {
+	return NewError(r, http.StatusBadRequest, "AuthorizationHeaderMalformed", "The authorization header you provided is invalid.")
+}
+
 // BadDigestError creates a new S3 error with a standard BadDigest S3 code.
 func BadDigestError(r *http.Request) *Error {
 	return NewError(r, http.StatusBadRequest, "BadDigest", "The Content-MD5 you specified did not match what we received.")
@@ -127,4 +133,10 @@ func NoSuchUploadError(r *http.Request) *Error {
 // S3 code.
 func NotImplementedError(r *http.Request) *Error {
 	return NewError(r, http.StatusNotImplemented, "NotImplemented", "This functionality is not implemented.")
+}
+
+// SignatureDoesNotMatchError creates a new S3 error with a standard
+// SignatureDoesNotMatch S3 code.
+func SignatureDoesNotMatchError(r *http.Request) *Error {
+	return NewError(r, http.StatusForbidden, "SignatureDoesNotMatch", "The request signature we calculated does not match the signature you provided. Check your auth credentials and signing method.")
 }
