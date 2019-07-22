@@ -14,7 +14,7 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 S3TESTS_ROOT = os.path.join(ROOT, "s3-tests")
 
 RAN_PATTERN = re.compile(r"^Ran (\d+) tests in [\d\.]+s")
-FAILED_PATTERN = re.compile(r"^FAILED \((SKIP=(\d+))?(, errors=(\d+))?(, failures=(\d+))?\)")
+FAILED_PATTERN = re.compile(r"^FAILED \((SKIP=(\d+))?(, )?(errors=(\d+))?(, )?(failures=(\d+))?\)")
 
 ERROR_PATTERN = re.compile(r"^(FAIL|ERROR): (.+)")
 
@@ -53,7 +53,11 @@ def compute_stats(filename):
 
             match = FAILED_PATTERN.match(line)
             if match:
-                _, skipped_str, _, errored_str, _, failed_str = match.groups()
+                groups = match.groups()
+                skipped_str = groups[1]
+                errored_str = groups[4]
+                failed_str = groups[7]
+                print(skipped_str, errored_str, failed_str)
                 skipped = int(skipped_str) if skipped_str is not None else 0
                 errored = int(errored_str) if errored_str is not None else 0
                 failed = int(failed_str) if failed_str is not None else 0
