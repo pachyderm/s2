@@ -57,7 +57,6 @@ def compute_stats(filename):
                 skipped_str = groups[1]
                 errored_str = groups[4]
                 failed_str = groups[7]
-                print(skipped_str, errored_str, failed_str)
                 skipped = int(skipped_str) if skipped_str is not None else 0
                 errored = int(errored_str) if errored_str is not None else 0
                 failed = int(failed_str) if failed_str is not None else 0
