@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/hmac"
 	"crypto/md5"
+	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/xml"
@@ -184,6 +185,12 @@ func normQuery(v url.Values) string {
 	// were originally spaces.
 
 	return strings.Replace(queryString, "+", "%20", -1)
+}
+
+func hmacSHA1(key []byte, content string) []byte {
+	mac := hmac.New(sha1.New, key)
+	mac.Write([]byte(content))
+	return mac.Sum(nil)
 }
 
 func hmacSHA256(key []byte, content string) []byte {

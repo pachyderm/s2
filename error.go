@@ -36,6 +36,12 @@ func (e *Error) Error() string {
 	return fmt.Sprintf("[%s] %s", e.Code, e.Message)
 }
 
+// AccessDeniedError creates a new S3 error with a standard AccessDenied S3
+// code.
+func AccessDeniedError(r *http.Request) *Error {
+	return NewError(r, http.StatusForbidden, "AccessDenied", "Access Denied")
+}
+
 // AuthorizationHeaderMalformedError creates a new S3 error with a standard
 // AuthorizationHeaderMalformed S3 code.
 func AuthorizationHeaderMalformedError(r *http.Request) *Error {

@@ -2,6 +2,7 @@ package s2
 
 import (
 	"crypto/sha256"
+	"encoding/base64"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -14,8 +15,28 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-var bucketNameValidator = regexp.MustCompile(`^/[a-zA-Z0-9\-_\.]{1,255}/`)
-var authHeaderValidator = regexp.MustCompile(`^AWS4-HMAC-SHA256 Credential=([^/]+)/([^/]+)/([^/]+)/s3/aws4_request, SignedHeaders=([^,]+), Signature=(.+)$`)
+var (
+	bucketNameValidator   = regexp.MustCompile(`^/[a-zA-Z0-9\-_\.]{1,255}/`)
+	authV2HeaderValidator = regexp.MustCompile(`^AWS ([^:]+):(.+)$`)
+	authV4HeaderValidator = regexp.MustCompile(`^AWS4-HMAC-SHA256 Credential=([^/]+)/([^/]+)/([^/]+)/s3/aws4_request, SignedHeaders=([^,]+), Signature=(.+)$`)
+
+	subresourceQueryParams = []string{
+		"acl",
+		"lifecycle",
+		"location",
+		"logging",
+		"notification",
+		"partNumber",
+		"policy",
+		"requestPayment",
+		"torrent",
+		"uploadId",
+		"uploads",
+		"versionId",
+		"versioning",
+		"versions",
+	}
+)
 
 func attachBucketRoutes(logger *logrus.Entry, router *mux.Router, handler *bucketHandler, multipartHandler *multipartHandler) {
 	router.Methods("GET", "PUT").Queries("accelerate", "").HandlerFunc(NotImplementedEndpoint(logger))
@@ -108,10 +129,9 @@ func (h *S2) requestIDMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func (h *S2) authV4(w http.ResponseWriter, r *http.Request) error {
+func (h *S2) authV4(w http.ResponseWriter, r *http.Request, auth string) error {
 	// parse auth-related headers
-	match := authHeaderValidator.FindStringSubmatch(r.Header.Get("authorization"))
-
+	match := authV4HeaderValidator.FindStringSubmatch(auth)
 	if len(match) == 0 {
 		return AuthorizationHeaderMalformedError(r)
 	}
@@ -122,14 +142,9 @@ func (h *S2) authV4(w http.ResponseWriter, r *http.Request) error {
 	signedHeaderKeys := strings.Split(match[4], ";")
 	sort.Strings(signedHeaderKeys)
 	expectedSignature := match[5]
-	h.logger.Debugf("accessKey: %s", accessKey)
-	h.logger.Debugf("date: %s", date)
-	h.logger.Debugf("region: %s", region)
-	h.logger.Debugf("signedHeaderKeys: %v", signedHeaderKeys)
-	h.logger.Debugf("expectedSignature: %s", expectedSignature)
 
 	// get the expected secret key
-	secretKey, err := h.Auth.SecretKey(r, accessKey, region)
+	secretKey, err := h.Auth.SecretKey(r, accessKey, &region)
 	if err != nil {
 		return InternalError(r, err)
 	}
@@ -212,8 +227,103 @@ func (h *S2) authV4(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	vars := mux.Vars(r)
+	vars["authMethod"] = "v4"
 	vars["authAccessKey"] = accessKey
 	vars["authRegion"] = region
+	return nil
+}
+
+func (h *S2) authV2(w http.ResponseWriter, r *http.Request, auth string) error {
+	// parse auth-related headers
+	match := authV2HeaderValidator.FindStringSubmatch(auth)
+	if len(match) == 0 {
+		return AuthorizationHeaderMalformedError(r)
+	}
+
+	accessKey := match[1]
+	expectedSignature := match[2]
+
+	// get the expected secret key
+	secretKey, err := h.Auth.SecretKey(r, accessKey, nil)
+	if err != nil {
+		return InternalError(r, err)
+	}
+
+	timestampStr := r.Header.Get("x-amz-date")
+	if timestampStr == "" {
+		timestampStr = r.Header.Get("date")
+	}
+
+	amzHeaderKeys := []string{}
+	for key := range r.Header {
+		if strings.HasPrefix(key, "x-amz-") {
+			amzHeaderKeys = append(amzHeaderKeys, key)
+		}
+	}
+	sort.Strings(amzHeaderKeys)
+
+	stringToSignParts := []string{
+		r.Method,
+		r.Header.Get("content-md5"),
+		r.Header.Get("content-type"),
+		timestampStr,
+	}
+
+	for _, key := range amzHeaderKeys {
+		// NOTE: this doesn't properly handle multiple header values, or
+		// header values with repeated whitespace characters
+		value := fmt.Sprintf("%s:%s", key, strings.TrimSpace(r.Header.Get(key)))
+		stringToSignParts = append(stringToSignParts, value)
+	}
+
+	var canonicalizedResource strings.Builder
+	canonicalizedResource.WriteString(r.URL.Path)
+	query := r.URL.Query()
+	appendedQuery := false
+	for _, k := range subresourceQueryParams {
+		_, ok := query[k]
+		if ok {
+			if appendedQuery {
+				canonicalizedResource.WriteString("&")
+			} else {
+				canonicalizedResource.WriteString("?")
+				appendedQuery = true
+			}
+
+			canonicalizedResource.WriteString(k)
+
+			value := query.Get(k)
+			if value != "" {
+				// NOTE: this doesn't properly handle multiple query params
+				canonicalizedResource.WriteString("=")
+				canonicalizedResource.WriteString(value)
+			}
+		}
+	}
+	stringToSignParts = append(stringToSignParts, canonicalizedResource.String())
+
+	stringToSign := strings.Join(stringToSignParts, "\n")
+
+	var signature string
+	if secretKey == nil {
+		signature = base64.StdEncoding.EncodeToString(hmacSHA1([]byte(""), stringToSign))
+	} else {
+		signature = base64.StdEncoding.EncodeToString(hmacSHA1([]byte(*secretKey), stringToSign))
+	}
+
+	h.logger.Debugf("stringToSign:\n%s", stringToSign)
+	h.logger.Debugf("signature: %s", signature)
+
+	// NOTE: it is not sufficient to just check the signature matches, because
+	// we might get to this point even if auth failed (i.e. if
+	// secretKey == nil); hence the check on secretKey
+	if secretKey == nil || expectedSignature != signature {
+		return AccessDeniedError(r)
+	}
+
+	vars := mux.Vars(r)
+	vars["authMethod"] = "v2"
+	vars["authAccessKey"] = accessKey
 	return nil
 }
 
@@ -226,11 +336,24 @@ func (h *S2) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h.logger.Debugf("headers: %v", r.Header)
 
-		if strings.HasPrefix(r.Header.Get("authorization"), "AWS4-HMAC-SHA256 ") {
-			if err := h.authV4(w, r); err != nil {
-				WriteError(h.logger, w, r, err)
-				return
-			}
+		auth := r.Header.Get("authorization")
+
+		passed := true
+		var err error
+		if strings.HasPrefix(auth, "AWS4-HMAC-SHA256 ") {
+			err = h.authV4(w, r, auth)
+		} else if strings.HasPrefix(auth, "AWS ") {
+			err = h.authV2(w, r, auth)
+		} else {
+			passed, err = h.Auth.CustomAuth(r)
+		}
+		if err != nil {
+			WriteError(h.logger, w, r, err)
+			return
+		}
+		if !passed {
+			WriteError(h.logger, w, r, AccessDeniedError(r))
+			return
 		}
 
 		next.ServeHTTP(w, r)
