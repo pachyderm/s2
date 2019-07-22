@@ -19,6 +19,9 @@ var (
     StorageClass = "STANDARD"
 
     Location = "pachydermia"
+
+    AccessKey = "homer"
+    SecretKey = "donuts"
 )
 
 type Storage struct {

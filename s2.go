@@ -131,10 +131,7 @@ func (h *S2) authV4(w http.ResponseWriter, r *http.Request) error {
 	// get the expected secret key
 	secretKey, err := h.Auth.SecretKey(r, accessKey, region)
 	if err != nil {
-		// Even though an error occurred, we'll continue to compute the
-		// signature to prevent a timing attack.
-		h.logger.Errorf("Failed to get secret key for region=%s, accessKey=%s: %v", region, accessKey, err)
-		secretKey = ""
+		return InternalError(r, err)
 	}
 
 	// step 1: construct the canonical request
@@ -184,7 +181,14 @@ func (h *S2) authV4(w http.ResponseWriter, r *http.Request) error {
 	)
 
 	// step 2: construct the string to sign
-	dateKey := hmacSHA256([]byte("AWS4"+secretKey), date)
+	var dateKey []byte
+	if secretKey == nil {
+		// we'll continue to compute the signature even if auth failed in
+		// order to prevent timing attacks
+		dateKey = hmacSHA256([]byte("AWS4"), date)
+	} else {
+		dateKey = hmacSHA256([]byte("AWS4"+*secretKey), date)
+	}
 	dateRegionKey := hmacSHA256(dateKey, region)
 	dateRegionServiceKey := hmacSHA256(dateRegionKey, "s3")
 	signingKey := hmacSHA256(dateRegionServiceKey, "aws4_request")
@@ -200,7 +204,10 @@ func (h *S2) authV4(w http.ResponseWriter, r *http.Request) error {
 	h.logger.Debugf("signingKey: %x", signingKey)
 	h.logger.Debugf("signature: %x", signature)
 
-	if expectedSignature != fmt.Sprintf("%x", signature) {
+	// NOTE: it is not sufficient to just check the signature matches, because
+	// we might get to this point even if auth failed (i.e. if
+	// secretKey == nil); hence the check on secretKey
+	if secretKey == nil || expectedSignature != fmt.Sprintf("%x", signature) {
 		return SignatureDoesNotMatchError(r)
 	}
 
