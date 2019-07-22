@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/gofrs/uuid"
 	"github.com/gorilla/mux"
@@ -158,10 +159,25 @@ func (h *S2) authV4(w http.ResponseWriter, r *http.Request) error {
 		r.Header.Get("x-amz-content-sha256"),
 	}, "\n")
 
-	timestamp := r.Header.Get("x-amz-date")
+	timestampStr := r.Header.Get("x-amz-date")
+	if timestampStr == "" {
+		timestampStr = r.Header.Get("date")
+	}
+
+	// check if the timestamp is formatted as RFC1123(Z), and reformat if so
+	if timestampStr != "" {
+		timestamp, err := time.Parse(time.RFC1123, timestampStr)
+		if err != nil {
+			timestamp, err = time.Parse(time.RFC1123Z, timestampStr)
+		}
+		if err == nil {
+			timestampStr = timestamp.UTC().Format("20060102T150405Z")
+		}
+	}
+
 	stringToSign := fmt.Sprintf(
 		"AWS4-HMAC-SHA256\n%s\n%s/%s/s3/aws4_request\n%x",
-		timestamp,
+		timestampStr,
 		date,
 		region,
 		sha256.Sum256([]byte(canonicalRequest)),
