@@ -15,7 +15,14 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+const (
+	awsTimeFormat = "20060102T150405Z"
+	skewTime      = 15 * time.Minute
+)
+
 var (
+	unixEpoch = time.Unix(0, 0)
+
 	bucketNameValidator   = regexp.MustCompile(`^/[a-zA-Z0-9\-_\.]{1,255}/`)
 	authV2HeaderValidator = regexp.MustCompile(`^AWS ([^:]+):(.+)$`)
 	authV4HeaderValidator = regexp.MustCompile(`^AWS4-HMAC-SHA256 Credential=([^/]+)/([^/]+)/([^/]+)/s3/aws4_request, SignedHeaders=([^,]+), Signature=(.+)$`)
@@ -88,6 +95,35 @@ func attachObjectRoutes(logger *logrus.Entry, router *mux.Router, handler *objec
 	router.Methods("DELETE").HandlerFunc(handler.del)
 }
 
+func parseTimestamp(r *http.Request) (time.Time, error) {
+	timestampStr := r.Header.Get("x-amz-date")
+	if timestampStr == "" {
+		timestampStr = r.Header.Get("date")
+	}
+
+	timestamp, err := time.Parse(time.RFC1123, timestampStr)
+	if err != nil {
+		timestamp, err = time.Parse(time.RFC1123Z, timestampStr)
+		if err != nil {
+			timestamp, err = time.Parse(awsTimeFormat, timestampStr)
+			if err != nil {
+				return time.Time{}, AccessDeniedError(r)
+			}
+		}
+	}
+
+	if !timestamp.After(unixEpoch) {
+		return time.Time{}, AccessDeniedError(r)
+	}
+
+	now := time.Now()
+	if !timestamp.After(now.Add(-skewTime)) || timestamp.After(now.Add(skewTime)) {
+		return time.Time{}, RequestTimeTooSkewedError(r)
+	}
+
+	return timestamp, nil
+}
+
 // S2 is the root struct used in the s2 library
 type S2 struct {
 	Auth      AuthController
@@ -148,6 +184,9 @@ func (h *S2) authV4(w http.ResponseWriter, r *http.Request, auth string) error {
 	if err != nil {
 		return InternalError(r, err)
 	}
+	if secretKey == nil {
+		return InvalidAccessKeyIDError(r)
+	}
 
 	// step 1: construct the canonical request
 	var signedHeaders strings.Builder
@@ -171,39 +210,21 @@ func (h *S2) authV4(w http.ResponseWriter, r *http.Request, auth string) error {
 		r.Header.Get("x-amz-content-sha256"),
 	}, "\n")
 
-	timestampStr := r.Header.Get("x-amz-date")
-	if timestampStr == "" {
-		timestampStr = r.Header.Get("date")
-	}
-
-	// check if the timestamp is formatted as RFC1123(Z), and reformat if so
-	if timestampStr != "" {
-		timestamp, err := time.Parse(time.RFC1123, timestampStr)
-		if err != nil {
-			timestamp, err = time.Parse(time.RFC1123Z, timestampStr)
-		}
-		if err == nil {
-			timestampStr = timestamp.UTC().Format("20060102T150405Z")
-		}
+	timestamp, err := parseTimestamp(r)
+	if err != nil {
+		return err
 	}
 
 	stringToSign := fmt.Sprintf(
 		"AWS4-HMAC-SHA256\n%s\n%s/%s/s3/aws4_request\n%x",
-		timestampStr,
+		timestamp.Format(awsTimeFormat),
 		date,
 		region,
 		sha256.Sum256([]byte(canonicalRequest)),
 	)
 
 	// step 2: construct the string to sign
-	var dateKey []byte
-	if secretKey == nil {
-		// we'll continue to compute the signature even if auth failed in
-		// order to prevent timing attacks
-		dateKey = hmacSHA256([]byte("AWS4"), date)
-	} else {
-		dateKey = hmacSHA256([]byte("AWS4"+*secretKey), date)
-	}
+	dateKey := hmacSHA256([]byte("AWS4"+*secretKey), date)
 	dateRegionKey := hmacSHA256(dateKey, region)
 	dateRegionServiceKey := hmacSHA256(dateRegionKey, "s3")
 	signingKey := hmacSHA256(dateRegionServiceKey, "aws4_request")
@@ -219,10 +240,7 @@ func (h *S2) authV4(w http.ResponseWriter, r *http.Request, auth string) error {
 	h.logger.Debugf("signingKey: %x", signingKey)
 	h.logger.Debugf("signature: %x", signature)
 
-	// NOTE: it is not sufficient to just check the signature matches, because
-	// we might get to this point even if auth failed (i.e. if
-	// secretKey == nil); hence the check on secretKey
-	if secretKey == nil || expectedSignature != fmt.Sprintf("%x", signature) {
+	if expectedSignature != fmt.Sprintf("%x", signature) {
 		return SignatureDoesNotMatchError(r)
 	}
 
@@ -237,7 +255,7 @@ func (h *S2) authV2(w http.ResponseWriter, r *http.Request, auth string) error {
 	// parse auth-related headers
 	match := authV2HeaderValidator.FindStringSubmatch(auth)
 	if len(match) == 0 {
-		return AuthorizationHeaderMalformedError(r)
+		return InvalidArgumentError(r)
 	}
 
 	accessKey := match[1]
@@ -248,10 +266,13 @@ func (h *S2) authV2(w http.ResponseWriter, r *http.Request, auth string) error {
 	if err != nil {
 		return InternalError(r, err)
 	}
+	if secretKey == nil {
+		return InvalidAccessKeyIDError(r)
+	}
 
-	timestampStr := r.Header.Get("x-amz-date")
-	if timestampStr == "" {
-		timestampStr = r.Header.Get("date")
+	timestamp, err := parseTimestamp(r)
+	if err != nil {
+		return err
 	}
 
 	amzHeaderKeys := []string{}
@@ -266,7 +287,7 @@ func (h *S2) authV2(w http.ResponseWriter, r *http.Request, auth string) error {
 		r.Method,
 		r.Header.Get("content-md5"),
 		r.Header.Get("content-type"),
-		timestampStr,
+		timestamp.Format(time.RFC1123),
 	}
 
 	for _, key := range amzHeaderKeys {
@@ -303,21 +324,11 @@ func (h *S2) authV2(w http.ResponseWriter, r *http.Request, auth string) error {
 	stringToSignParts = append(stringToSignParts, canonicalizedResource.String())
 
 	stringToSign := strings.Join(stringToSignParts, "\n")
-
-	var signature string
-	if secretKey == nil {
-		signature = base64.StdEncoding.EncodeToString(hmacSHA1([]byte(""), stringToSign))
-	} else {
-		signature = base64.StdEncoding.EncodeToString(hmacSHA1([]byte(*secretKey), stringToSign))
-	}
-
+	signature := base64.StdEncoding.EncodeToString(hmacSHA1([]byte(*secretKey), stringToSign))
 	h.logger.Debugf("stringToSign:\n%s", stringToSign)
 	h.logger.Debugf("signature: %s", signature)
 
-	// NOTE: it is not sufficient to just check the signature matches, because
-	// we might get to this point even if auth failed (i.e. if
-	// secretKey == nil); hence the check on secretKey
-	if secretKey == nil || expectedSignature != signature {
+	if expectedSignature != signature {
 		return AccessDeniedError(r)
 	}
 

@@ -82,9 +82,15 @@ func InvalidBucketNameError(r *http.Request) *Error {
 	return NewError(r, http.StatusBadRequest, "InvalidBucketName", "The specified bucket is not valid.")
 }
 
-// InvalidArgument creates a new S3 error with a standard InvalidArgument S3
+// InvalidAccessKeyIDError creates a new S3 error with a standard
+// InvalidAccessKeyId S3 code.
+func InvalidAccessKeyIDError(r *http.Request) *Error {
+	return NewError(r, http.StatusForbidden, "InvalidAccessKeyId", "The AWS access key ID you provided does not exist in our records.")
+}
+
+// InvalidArgumentError creates a new S3 error with a standard InvalidArgument S3
 // code.
-func InvalidArgument(r *http.Request) *Error {
+func InvalidArgumentError(r *http.Request) *Error {
 	return NewError(r, http.StatusBadRequest, "InvalidArgument", "Invalid Argument")
 }
 
@@ -139,6 +145,12 @@ func NoSuchUploadError(r *http.Request) *Error {
 // S3 code.
 func NotImplementedError(r *http.Request) *Error {
 	return NewError(r, http.StatusNotImplemented, "NotImplemented", "This functionality is not implemented.")
+}
+
+// RequestTimeTooSkewedError creates a new S3 error with a standard
+// RequestTimeTooSkewed S3 code.
+func RequestTimeTooSkewedError(r *http.Request) *Error {
+	return NewError(r, http.StatusForbidden, "RequestTimeTooSkewed", "The difference between the request time and the server's time is too large. ")
 }
 
 // SignatureDoesNotMatchError creates a new S3 error with a standard

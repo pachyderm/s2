@@ -107,7 +107,7 @@ func intFormValue(r *http.Request, name string, min int, max int, def int) (int,
 
 	i, err := strconv.Atoi(s)
 	if err != nil || i < min || i > max {
-		return 0, InvalidArgument(r)
+		return 0, InvalidArgumentError(r)
 	}
 
 	return i, nil
