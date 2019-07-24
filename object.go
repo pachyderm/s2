@@ -61,29 +61,20 @@ func (h *objectHandler) get(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *objectHandler) put(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	bucket := vars["bucket"]
-	key := vars["key"]
-	etag := ""
-
-	shouldCleanup, err := withBodyReader(r, func(reader io.Reader) error {
-		fetchedETag, err := h.controller.PutObject(r, bucket, key, reader)
-		etag = fetchedETag
-		return err
-	})
-
-	if shouldCleanup {
-		// try to clean up the file
-		if err := h.controller.DeleteObject(r, bucket, key); err != nil {
-			h.logger.Errorf("could not clean up file after an error: %+v", err)
-		}
-	}
-
-	if err != nil {
+	if err := requireContentLength(r); err != nil {
 		WriteError(h.logger, w, r, err)
 		return
 	}
 
+	vars := mux.Vars(r)
+	bucket := vars["bucket"]
+	key := vars["key"]
+
+	etag, err := h.controller.PutObject(r, bucket, key, r.Body)
+	if err != nil {
+		WriteError(h.logger, w, r, err)
+		return
+	}
 	if etag != "" {
 		w.Header().Set("ETag", addETagQuotes(etag))
 	}

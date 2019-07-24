@@ -228,27 +228,3 @@ func (c Controller) UploadMultipartChunk(r *http.Request, name, key, uploadID st
 	multipart[partNumber] = bytes
 	return fmt.Sprintf("%x", hash), nil
 }
-
-func (c Controller) DeleteMultipartChunk(r *http.Request, name, key, uploadID string, partNumber int) error {
-	c.logger.Tracef("DeleteMultipartChunk: name=%+v, key=%+v, uploadID=%+v partNumber=%+v", name, key, uploadID, partNumber)
-
-	c.DB.Lock.Lock()
-	defer c.DB.Lock.Unlock()
-
-	bucket, err := c.DB.Bucket(r, name)
-	if err != nil {
-		return err
-	}
-
-	multipart, err := bucket.Multipart(r, key, uploadID)
-	if err != nil {
-		return err
-	}
-
-	if _, ok := multipart[partNumber]; !ok {
-		return s2.InvalidPartError(r)
-	}
-
-	delete(multipart, partNumber)
-	return nil
-}

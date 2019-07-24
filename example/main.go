@@ -21,7 +21,7 @@ func main() {
 
 	controller := controllers.NewController(db, logger)
 
-	s3 := s2.NewS2(logger)
+	s3 := s2.NewS2(logger, 0)
 	s3.Auth = controller
 	s3.Service = controller
 	s3.Bucket = controller

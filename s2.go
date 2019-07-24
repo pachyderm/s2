@@ -1,12 +1,16 @@
 package s2
 
 import (
+	"bytes"
+	"crypto/md5"
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -126,24 +130,28 @@ func parseTimestamp(r *http.Request) (time.Time, error) {
 
 // S2 is the root struct used in the s2 library
 type S2 struct {
-	Auth      AuthController
-	Service   ServiceController
-	Bucket    BucketController
-	Object    ObjectController
-	Multipart MultipartController
-	logger    *logrus.Entry
+	Auth                 AuthController
+	Service              ServiceController
+	Bucket               BucketController
+	Object               ObjectController
+	Multipart            MultipartController
+	logger               *logrus.Entry
+	maxRequestBodyLength uint32
 }
 
 // NewS2 creates a new S2 instance. One created, you set zero or more
 // attributes to implement various S3 functionality, then create a router.
-func NewS2(logger *logrus.Entry) *S2 {
+// `maxRequestBodyLength` specifies maximum request body size; if the value is
+// 0, there is no limit.
+func NewS2(logger *logrus.Entry, maxRequestBodyLength uint32) *S2 {
 	return &S2{
-		Auth:      nil,
-		Service:   unimplementedServiceController{},
-		Bucket:    unimplementedBucketController{},
-		Object:    unimplementedObjectController{},
-		Multipart: unimplementedMultipartController{},
-		logger:    logger,
+		Auth:                 nil,
+		Service:              unimplementedServiceController{},
+		Bucket:               unimplementedBucketController{},
+		Object:               unimplementedObjectController{},
+		Multipart:            unimplementedMultipartController{},
+		logger:               logger,
+		maxRequestBodyLength: maxRequestBodyLength,
 	}
 }
 
@@ -360,6 +368,68 @@ func (h *S2) authMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+func (h *S2) bodyReadingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		contentLengthStr := r.Header.Get("content-length")
+		if contentLengthStr == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		contentLength, err := strconv.ParseUint(contentLengthStr, 10, 32)
+		if err != nil {
+			WriteError(h.logger, w, r, MissingContentLengthError(r))
+			return
+		}
+		if h.maxRequestBodyLength > 0 && uint32(contentLength) > h.maxRequestBodyLength {
+			WriteError(h.logger, w, r, EntityTooLargeError(r))
+			return
+		}
+
+		body, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			WriteError(h.logger, w, r, IncompleteBodyError(r))
+			return
+		}
+		r.Body.Close()
+		r.Body = ioutil.NopCloser(bytes.NewBuffer(body))
+
+		if uint64(len(body)) != contentLength {
+			WriteError(h.logger, w, r, IncompleteBodyError(r))
+			return
+		}
+
+		expectedSHA256 := r.Header.Get("x-amz-content-sha256")
+		if expectedSHA256 != "" {
+			if len(expectedSHA256) != 64 {
+				WriteError(h.logger, w, r, InvalidDigestError(r))
+				return
+			}
+			actualSHA256 := sha256.Sum256(body)
+			if fmt.Sprintf("%x", actualSHA256) != expectedSHA256 {
+				WriteError(h.logger, w, r, BadDigestError(r))
+				return
+			}
+		}
+
+		expectedMD5 := r.Header.Get("content-md5")
+		if expectedMD5 != "" {
+			expectedMD5Decoded, err := base64.StdEncoding.DecodeString(expectedMD5)
+			if err != nil || len(expectedMD5Decoded) != 16 {
+				WriteError(h.logger, w, r, InvalidDigestError(r))
+				return
+			}
+			actualMD5 := md5.Sum(body)
+			if !bytes.Equal(expectedMD5Decoded, actualMD5[:]) {
+				WriteError(h.logger, w, r, BadDigestError(r))
+				return
+			}
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
 // Router creates a new mux router.
 func (h *S2) Router() *mux.Router {
 	serviceHandler := &serviceHandler{
@@ -381,10 +451,10 @@ func (h *S2) Router() *mux.Router {
 
 	router := mux.NewRouter()
 	router.Use(h.requestIDMiddleware)
-
 	if h.Auth != nil {
 		router.Use(h.authMiddleware)
 	}
+	router.Use(h.bodyReadingMiddleware)
 
 	router.Path(`/`).Methods("GET", "HEAD").HandlerFunc(serviceHandler.get)
 
