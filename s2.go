@@ -357,6 +357,7 @@ func (h *S2) authMiddleware(next http.Handler) http.Handler {
 			err = h.authV2(w, r, auth)
 		} else {
 			passed, err = h.Auth.CustomAuth(r)
+			vars["authMethod"] = "custom"
 		}
 		if err != nil {
 			WriteError(h.logger, w, r, err)
