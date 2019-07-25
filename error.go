@@ -138,7 +138,7 @@ func MethodNotAllowedError(r *http.Request) *Error {
 // MissingContentLengthError creates a new S3 error with a standard
 // MissingContentLength S3 code.
 func MissingContentLengthError(r *http.Request) *Error {
-	return NewError(r, http.StatusBadRequest, "MissingContentLength", "You must provide the Content-Length HTTP header.")
+	return NewError(r, http.StatusLengthRequired, "MissingContentLength", "You must provide the Content-Length HTTP header.")
 }
 
 // MissingRequestBodyError creates a new S3 error with a standard

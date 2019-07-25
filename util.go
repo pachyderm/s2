@@ -175,3 +175,17 @@ func requireContentLength(r *http.Request) error {
 	}
 	return nil
 }
+
+// singleHeader gets a single header value. This is used in places instead of
+// `r.Header.Get()` because it differentiates between missing headers versus
+// empty header values.
+func singleHeader(r *http.Request, name string) (string, bool) {
+	values, ok := r.Header[name]
+	if !ok {
+		return "", false
+	}
+	if len(values) != 1 {
+		return "", false
+	}
+	return values[0], true
+}

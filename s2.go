@@ -160,7 +160,6 @@ func NewS2(logger *logrus.Entry, maxRequestBodyLength uint32) *S2 {
 func (h *S2) requestIDMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
-
 		id, err := uuid.NewV4()
 		if err != nil {
 			baseErr := fmt.Errorf("could not generate request ID: %v", err)
@@ -370,8 +369,8 @@ func (h *S2) authMiddleware(next http.Handler) http.Handler {
 
 func (h *S2) bodyReadingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		contentLengthStr := r.Header.Get("content-length")
-		if contentLengthStr == "" {
+		contentLengthStr, ok := singleHeader(r, "Content-Length")
+		if !ok {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -399,8 +398,8 @@ func (h *S2) bodyReadingMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		expectedSHA256 := r.Header.Get("x-amz-content-sha256")
-		if expectedSHA256 != "" {
+		expectedSHA256, ok := singleHeader(r, "x-amz-content-sha256")
+		if ok {
 			if len(expectedSHA256) != 64 {
 				WriteError(h.logger, w, r, InvalidDigestError(r))
 				return
@@ -412,8 +411,8 @@ func (h *S2) bodyReadingMiddleware(next http.Handler) http.Handler {
 			}
 		}
 
-		expectedMD5 := r.Header.Get("content-md5")
-		if expectedMD5 != "" {
+		expectedMD5, ok := singleHeader(r, "Content-Md5")
+		if ok {
 			expectedMD5Decoded, err := base64.StdEncoding.DecodeString(expectedMD5)
 			if err != nil || len(expectedMD5Decoded) != 16 {
 				WriteError(h.logger, w, r, InvalidDigestError(r))

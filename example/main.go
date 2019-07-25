@@ -34,6 +34,7 @@ func main() {
 		Addr: ":8080",
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			logger.Infof("%s %s", r.Method, r.RequestURI)
+			logger.Infof("headers: %+v", r.Header)
 			router.ServeHTTP(w, r)
 		}),
 		ErrorLog:     stdlog.New(logger.Writer(), "", 0),
