@@ -101,3 +101,14 @@ func (c Controller) DeleteBucket(r *http.Request, name string) error {
 	delete(c.DB.Buckets, name)
 	return nil
 }
+
+func (c Controller) GetBucketVersioning(r *http.Request, bucket string) (status string, err error) {
+	return s2.VersioningDisabled, nil
+}
+
+func (c Controller) SetBucketVersioning(r *http.Request, bucket, status string) error {
+	if status == s2.VersioningEnabled {
+		return s2.NotImplementedError(r)
+	}
+	return nil
+}

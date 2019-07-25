@@ -13,8 +13,8 @@ import (
 	"github.com/pachyderm/s2/example/models"
 )
 
-func (c Controller) GetObject(r *http.Request, name, key string) (etag string, modTime time.Time, content io.ReadSeeker, err error) {
-	c.logger.Tracef("GetObject: name=%+v, key=%+v", name, key)
+func (c Controller) GetObject(r *http.Request, name, key, version string) (etag string, fetchedVersion string, modTime time.Time, content io.ReadSeeker, err error) {
+	c.logger.Tracef("GetObject: name=%+v, key=%+v, version=%+v", name, key, version)
 
 	c.DB.Lock.RLock()
 	defer c.DB.Lock.RUnlock()
@@ -37,7 +37,7 @@ func (c Controller) GetObject(r *http.Request, name, key string) (etag string, m
 	return
 }
 
-func (c Controller) PutObject(r *http.Request, name, key string, reader io.Reader) (etag string, err error) {
+func (c Controller) PutObject(r *http.Request, name, key string, reader io.Reader) (etag, createdVersion string, err error) {
 	c.logger.Tracef("PutObject: name=%+v, key=%+v", name, key)
 
 	c.DB.Lock.Lock()
@@ -60,22 +60,22 @@ func (c Controller) PutObject(r *http.Request, name, key string, reader io.Reade
 	return
 }
 
-func (c Controller) DeleteObject(r *http.Request, name, key string) error {
-	c.logger.Tracef("DeleteObject: name=%+v, key=%+v", name, key)
+func (c Controller) DeleteObject(r *http.Request, name, key, version string) (removedVersion string, err error) {
+	c.logger.Tracef("DeleteObject: name=%+v, key=%+v, version=%+v", name, key, version)
 
 	c.DB.Lock.Lock()
 	defer c.DB.Lock.Unlock()
 
 	bucket, err := c.DB.Bucket(r, name)
 	if err != nil {
-		return err
+		return
 	}
 
 	_, err = bucket.Object(r, key)
 	if err != nil {
-		return err
+		return
 	}
 
 	delete(bucket.Objects, key)
-	return nil
+	return
 }

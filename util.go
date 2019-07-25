@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/xml"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -187,4 +188,16 @@ func singleHeader(r *http.Request, name string) (string, bool) {
 		return "", false
 	}
 	return values[0], true
+}
+
+func readXMLBody(r *http.Request, payload interface{}) error {
+	bodyBytes, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		return err
+	}
+	err = xml.Unmarshal(bodyBytes, &payload)
+	if err != nil {
+		return MalformedXMLError(r)
+	}
+	return nil
 }

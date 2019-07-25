@@ -4,7 +4,6 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"sort"
 	"time"
@@ -233,19 +232,12 @@ func (h *multipartHandler) complete(w http.ResponseWriter, r *http.Request) {
 
 	uploadID := r.FormValue("uploadId")
 
-	bodyBytes, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		err = InternalError(r, fmt.Errorf("could not read request body: %v", err))
-		WriteError(h.logger, w, r, err)
-		return
-	}
 	payload := struct {
 		XMLName xml.Name `xml:"CompleteMultipartUpload"`
 		Parts   []Part   `xml:"Part"`
 	}{}
-	err = xml.Unmarshal(bodyBytes, &payload)
-	if err != nil {
-		WriteError(h.logger, w, r, MalformedXMLError(r))
+	if err := readXMLBody(r, &payload); err != nil {
+		WriteError(h.logger, w, r, err)
 		return
 	}
 
