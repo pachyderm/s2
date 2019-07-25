@@ -169,8 +169,7 @@ func hmacSHA256(key []byte, content string) []byte {
 }
 
 func requireContentLength(r *http.Request) error {
-	contentLength := r.Header.Get("content-length")
-	if contentLength == "" {
+	if _, ok := singleHeader(r, "Content-Length"); !ok {
 		return MissingContentLengthError(r)
 	}
 	return nil

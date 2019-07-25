@@ -137,13 +137,15 @@ type S2 struct {
 	Multipart            MultipartController
 	logger               *logrus.Entry
 	maxRequestBodyLength uint32
+	readBodyTimeout      time.Duration
 }
 
 // NewS2 creates a new S2 instance. One created, you set zero or more
 // attributes to implement various S3 functionality, then create a router.
 // `maxRequestBodyLength` specifies maximum request body size; if the value is
-// 0, there is no limit.
-func NewS2(logger *logrus.Entry, maxRequestBodyLength uint32) *S2 {
+// 0, there is no limit. `readBodyTimeout` specifies the maximum amount of
+// time s2 should spend trying to read the body of requests.
+func NewS2(logger *logrus.Entry, maxRequestBodyLength uint32, readBodyTimeout time.Duration) *S2 {
 	return &S2{
 		Auth:                 nil,
 		Service:              unimplementedServiceController{},
@@ -152,6 +154,7 @@ func NewS2(logger *logrus.Entry, maxRequestBodyLength uint32) *S2 {
 		Multipart:            unimplementedMultipartController{},
 		logger:               logger,
 		maxRequestBodyLength: maxRequestBodyLength,
+		readBodyTimeout:      readBodyTimeout,
 	}
 }
 
@@ -374,10 +377,9 @@ func (h *S2) bodyReadingMiddleware(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-
 		contentLength, err := strconv.ParseUint(contentLengthStr, 10, 32)
 		if err != nil {
-			WriteError(h.logger, w, r, MissingContentLengthError(r))
+			WriteError(h.logger, w, r, InvalidArgumentError(r))
 			return
 		}
 		if h.maxRequestBodyLength > 0 && uint32(contentLength) > h.maxRequestBodyLength {
@@ -385,17 +387,23 @@ func (h *S2) bodyReadingMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		body, err := ioutil.ReadAll(r.Body)
-		if err != nil {
-			WriteError(h.logger, w, r, IncompleteBodyError(r))
-			return
-		}
-		r.Body.Close()
-		r.Body = ioutil.NopCloser(bytes.NewBuffer(body))
+		body := []byte{}
 
-		if uint64(len(body)) != contentLength {
-			WriteError(h.logger, w, r, IncompleteBodyError(r))
-			return
+		if contentLength > 0 {
+			bodyBuf, err := h.readBody(r, uint32(contentLength))
+			if err != nil {
+				WriteError(h.logger, w, r, err)
+				return
+			}
+			if bodyBuf == nil {
+				WriteError(h.logger, w, r, RequestTimeoutError(r))
+				return
+			}
+			body = bodyBuf.Bytes()
+			r.Body = ioutil.NopCloser(bodyBuf)
+		} else {
+			r.Body.Close()
+			r.Body = ioutil.NopCloser(bytes.NewBuffer(body))
 		}
 
 		expectedSHA256, ok := singleHeader(r, "x-amz-content-sha256")
@@ -427,6 +435,34 @@ func (h *S2) bodyReadingMiddleware(next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r)
 	})
+}
+
+func (h *S2) readBody(r *http.Request, length uint32) (*bytes.Buffer, error) {
+	var body bytes.Buffer
+	body.Grow(int(length))
+
+	ch := make(chan error)
+	go func() {
+		n, err := body.ReadFrom(r.Body)
+		r.Body.Close()
+		if err != nil {
+			ch <- err
+		}
+		if uint32(n) != length {
+			ch <- IncompleteBodyError(r)
+		}
+		ch <- nil
+	}()
+
+	select {
+	case err := <-ch:
+		if err != nil {
+			return nil, err
+		}
+		return &body, nil
+	case <-time.After(h.readBodyTimeout):
+		return nil, nil
+	}
 }
 
 // Router creates a new mux router.

@@ -170,10 +170,16 @@ func NotImplementedError(r *http.Request) *Error {
 	return NewError(r, http.StatusNotImplemented, "NotImplemented", "This functionality is not implemented.")
 }
 
+// RequestTimeoutError creates a new S3 error with a standard RequestTimeout
+// S3 code.
+func RequestTimeoutError(r *http.Request) *Error {
+	return NewError(r, http.StatusBadRequest, "RequestTimeout", "Your socket connection to the server was not read from or written to within the timeout period.")
+}
+
 // RequestTimeTooSkewedError creates a new S3 error with a standard
 // RequestTimeTooSkewed S3 code.
 func RequestTimeTooSkewedError(r *http.Request) *Error {
-	return NewError(r, http.StatusForbidden, "RequestTimeTooSkewed", "The difference between the request time and the server's time is too large. ")
+	return NewError(r, http.StatusForbidden, "RequestTimeTooSkewed", "The difference between the request time and the server's time is too large.")
 }
 
 // SignatureDoesNotMatchError creates a new S3 error with a standard
