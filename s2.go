@@ -73,7 +73,7 @@ func attachBucketRoutes(logger *logrus.Entry, router *mux.Router, handler *bucke
 	router.Methods("POST").HandlerFunc(NotImplementedEndpoint(logger))
 
 	router.Methods("GET").Queries("uploads", "").HandlerFunc(multipartHandler.list)
-	router.Methods("GET", "HEAD").Queries("location", "").HandlerFunc(handler.location)
+	router.Methods("GET").Queries("location", "").HandlerFunc(handler.location)
 	router.Methods("GET", "HEAD").HandlerFunc(handler.get)
 	router.Methods("PUT").HandlerFunc(handler.put)
 	router.Methods("DELETE").HandlerFunc(handler.del)
@@ -89,7 +89,7 @@ func attachObjectRoutes(logger *logrus.Entry, router *mux.Router, handler *objec
 	router.Methods("POST").Queries("select", "").HandlerFunc(NotImplementedEndpoint(logger))
 	router.Methods("PUT").Headers("x-amz-copy-source", "").HandlerFunc(NotImplementedEndpoint(logger))
 
-	router.Methods("GET", "HEAD").Queries("uploadId", "").HandlerFunc(multipartHandler.listChunks)
+	router.Methods("GET").Queries("uploadId", "").HandlerFunc(multipartHandler.listChunks)
 	router.Methods("POST").Queries("uploads", "").HandlerFunc(multipartHandler.init)
 	router.Methods("POST").Queries("uploadId", "").HandlerFunc(multipartHandler.complete)
 	router.Methods("PUT").Queries("uploadId", "").HandlerFunc(multipartHandler.put)
