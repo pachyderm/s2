@@ -28,7 +28,6 @@ TRACEBACK_PREFIXES = [
 # doesn't support this functionality.
 BLACKLISTED_ATTRIBUTES = [
     "list-objects-v2",
-    "versioning",
     "cors",
     "lifecycle",
     "encryption",
