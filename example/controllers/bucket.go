@@ -73,6 +73,12 @@ func (c Controller) ListObjects(r *http.Request, name, prefix, marker, delimiter
 	return
 }
 
+func (c Controller) ListVersionedObjects(r *http.Request, name, prefix, keyMarker, versionMarker string, delimiter string, maxKeys int) (versions []s2.Version, deleteMarkers []s2.DeleteMarker, isTruncated bool, err error) {
+	c.logger.Tracef("ListVersionedObjects: name=%+v, prefix=%+v, keyMarker=%+v, versionMarker=%+v, delimiter=%+v, maxKeys=%+v", name, prefix, keyMarker, versionMarker, delimiter, maxKeys)
+	err = s2.NotImplementedError(r)
+	return
+}
+
 func (c Controller) CreateBucket(r *http.Request, name string) error {
 	c.logger.Tracef("CreateBucket: %+v", name)
 
@@ -102,11 +108,13 @@ func (c Controller) DeleteBucket(r *http.Request, name string) error {
 	return nil
 }
 
-func (c Controller) GetBucketVersioning(r *http.Request, bucket string) (status string, err error) {
+func (c Controller) GetBucketVersioning(r *http.Request, name string) (status string, err error) {
+	c.logger.Tracef("GetBucketVersioning: %+v", name)
 	return s2.VersioningDisabled, nil
 }
 
-func (c Controller) SetBucketVersioning(r *http.Request, bucket, status string) error {
+func (c Controller) SetBucketVersioning(r *http.Request, name, status string) error {
+	c.logger.Tracef("SetBucketVersioning: name=%+v, status=%+v", name, status)
 	if status == s2.VersioningEnabled {
 		return s2.NotImplementedError(r)
 	}
