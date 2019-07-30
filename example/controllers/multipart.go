@@ -1,13 +1,10 @@
 package controllers
 
 import (
-	"crypto/md5"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"math/rand"
 	"net/http"
-	"sort"
 
 	"github.com/pachyderm/s2"
 	"github.com/pachyderm/s2/example/models"
@@ -25,38 +22,23 @@ func randomString(n int) string {
 
 func (c Controller) ListMultipart(r *http.Request, name, keyMarker, uploadIDMarker string, maxUploads int) (isTruncated bool, uploads []s2.Upload, err error) {
 	c.logger.Tracef("ListMultipart: name=%+v, keyMarker=%+v, uploadIDMarker=%+v, maxUploads=%+v", name, keyMarker, uploadIDMarker, maxUploads)
+	vars := mux.Vars(r)
+	tx := vars["tx"]
 
-	c.DB.Lock.RLock()
-	defer c.DB.Lock.RUnlock()
+	bucket, err := models.GetBucket(tx, name)
+	if err != nil {
+		if gorm.IsRecordNotFoundError(err) {
+			err = s2.NoSuchBucketError(r)
+		}
+		return
+	}
 
-	bucket, err := c.DB.Bucket(r, name)
+	parts, err := models.ListMultiparts(tx, bucket.ID, keyMakrer, uploadIDMarker, maxUploads+1)
 	if err != nil {
 		return
 	}
 
-	keys := []models.MultipartKey{}
-	for key := range bucket.Multiparts {
-		keys = append(keys, key)
-	}
-
-	sort.Slice(keys, func(i, j int) bool {
-		if keys[i].Key < keys[j].Key {
-			return true
-		}
-		if keys[i].UploadID < keys[j].UploadID {
-			return true
-		}
-		return false
-	})
-
-	for _, key := range keys {
-		if key.Key <= keyMarker {
-			continue
-		}
-		if key.UploadID <= uploadIDMarker {
-			continue
-		}
-
+	for _, part := range parts {
 		if len(uploads) >= maxUploads {
 			if maxUploads > 0 {
 				isTruncated = true
@@ -65,8 +47,8 @@ func (c Controller) ListMultipart(r *http.Request, name, keyMarker, uploadIDMark
 		}
 
 		uploads = append(uploads, s2.Upload{
-			Key:          key.Key,
-			UploadID:     key.UploadID,
+			Key:          part.Key,
+			UploadID:     part.UploadID,
 			Initiator:    models.GlobalUser,
 			StorageClass: models.StorageClass,
 			Initiated:    models.Epoch,
@@ -78,65 +60,65 @@ func (c Controller) ListMultipart(r *http.Request, name, keyMarker, uploadIDMark
 
 func (c Controller) InitMultipart(r *http.Request, name, key string) (uploadID string, err error) {
 	c.logger.Tracef("InitMultipart: name=%+v, key=%+v", name, key)
-	uploadID = randomString(10)
+	vars := mux.Vars(r)
+	tx := vars["tx"]
 
-	c.DB.Lock.Lock()
-	defer c.DB.Lock.Unlock()
-
-	bucket, err := c.DB.Bucket(r, name)
+	bucket, err := models.GetBucket(tx, name)
 	if err != nil {
-		return "", err
+		if gorm.IsRecordNotFoundError(err) {
+			err = s2.NoSuchBucketError(r)
+		}
+		return
 	}
 
-	multipartKey := models.NewMultipartKey(key, uploadID)
-	bucket.Multiparts[multipartKey] = map[int][]byte{}
-	return uploadID, nil
+	uploadID = randomString(10)
+	return
 }
 
 func (c Controller) AbortMultipart(r *http.Request, name, key, uploadID string) error {
 	c.logger.Tracef("AbortMultipart: name=%+v, key=%+v, uploadID=%+v", name, key, uploadID)
-	c.DB.Lock.Lock()
-	defer c.DB.Lock.Unlock()
+	vars := mux.Vars(r)
+	tx := vars["tx"]
 
-	bucket, err := c.DB.Bucket(r, name)
+	bucket, err := models.GetBucket(tx, name)
 	if err != nil {
-		return err
+		if gorm.IsRecordNotFoundError(err) {
+			err = s2.NoSuchBucketError(r)
+		}
+		return
 	}
 
-	if _, err = bucket.Multipart(r, key, uploadID); err != nil {
-		return err
-	}
-
-	multipartKey := models.NewMultipartKey(key, uploadID)
-	delete(bucket.Multiparts, multipartKey)
-	return nil
+	err = models.DeleteMultipart(tx, bucket.ID, key, uploadID)
+	return
 }
 
 func (c Controller) CompleteMultipart(r *http.Request, name, key, uploadID string, parts []s2.Part) (location, etag string, err error) {
 	c.logger.Tracef("CompleteMultipart: name=%+v, key=%+v, uploadID=%+v, parts=%+v", name, key, uploadID, parts)
+	vars := mux.Vars(r)
+	tx := vars["tx"]
 
-	c.DB.Lock.Lock()
-	defer c.DB.Lock.Unlock()
-
-	bucket, err := c.DB.Bucket(r, name)
+	bucket, err := models.GetBucket(tx, name)
 	if err != nil {
-		return
-	}
-
-	multipart, err := bucket.Multipart(r, key, uploadID)
-	if err != nil {
+		if gorm.IsRecordNotFoundError(err) {
+			err = s2.NoSuchBucketError(r)
+		}
 		return
 	}
 
 	bytes := []byte{}
 
 	for i, part := range parts {
-		chunk, ok := multipart[part.PartNumber]
-		if !ok || fmt.Sprintf("%x", md5.Sum(chunk)) != part.ETag {
+		chunk, err := models.GetMultipart(tx, bucketID, key, uploadID, part.PartNumber)
+		if err != nil {
+			if gorm.IsRecordNotFoundError(err) {
+				err = s2.InvalidPartError(r)
+			}
+			return
+		}
+		if chunk.ETag != part.ETag {
 			err = s2.InvalidPartError(r)
 			return
 		}
-
 		if i < len(parts)-1 && len(chunk) < 5*1024*1024 {
 			// each part, except for the last, is expected to be at least 5mb
 			// in s3
@@ -147,43 +129,40 @@ func (c Controller) CompleteMultipart(r *http.Request, name, key, uploadID strin
 		bytes = append(bytes, chunk...)
 	}
 
-	bucket.Objects[key] = bytes
-	multipartKey := models.NewMultipartKey(key, uploadID)
-	delete(bucket.Multiparts, multipartKey)
+	var obj *models.Object
+	obj, err = models.UpsertObject(tx, bucket.ID, key, bytes)
+	if err != nil {
+		return
+	}
+	if err = models.DeleteMultiparts(tx, bucket.ID, key, uploadID); err != nil {
+		return
+	}
 
 	location = models.Location
-	etag = fmt.Sprintf("%x", md5.Sum(bytes))
+	etag = obj.ETag
 	return
 }
 
 func (c Controller) ListMultipartChunks(r *http.Request, name, key, uploadID string, partNumberMarker, maxParts int) (initiator, owner *s2.User, storageClass string, isTruncated bool, parts []s2.Part, err error) {
 	c.logger.Tracef("ListMultipartChunks: name=%+v, key=%+v, uploadID=%+v, partNumberMarker=%+v, maxParts=%+v", name, key, uploadID, partNumberMarker, maxParts)
+	vars := mux.Vars(r)
+	tx := vars["tx"]
 
-	c.DB.Lock.RLock()
-	defer c.DB.Lock.RUnlock()
-
-	bucket, err := c.DB.Bucket(r, name)
+	bucket, err := models.GetBucket(tx, name)
 	if err != nil {
-		return
-	}
-
-	multipart, err := bucket.Multipart(r, key, uploadID)
-	if err != nil {
-		return
-	}
-
-	keys := []int{}
-	for key := range multipart {
-		keys = append(keys, key)
-	}
-
-	sort.Ints(keys)
-
-	for _, key := range keys {
-		if key <= partNumberMarker {
-			continue
+		if gorm.IsRecordNotFoundError(err) {
+			err = s2.NoSuchBucketError(r)
 		}
+		return
+	}
 
+	var chunks []*models.Multipart
+	chunks, err = models.ListMultipartChunks(tx, bucket.ID, key, uploadID, partNumberMarker, maxParts+1)
+	if err != nil {
+		return
+	}
+
+	for _, chunk := range chunks {
 		if len(parts) >= maxParts {
 			if maxParts > 0 {
 				isTruncated = true
@@ -192,8 +171,8 @@ func (c Controller) ListMultipartChunks(r *http.Request, name, key, uploadID str
 		}
 
 		parts = append(parts, s2.Part{
-			PartNumber: key,
-			ETag:       fmt.Sprintf("%x", md5.Sum(multipart[key])),
+			PartNumber: chunk.PartNumber,
+			ETag:       chunk.ETag,
 		})
 	}
 
@@ -205,26 +184,27 @@ func (c Controller) ListMultipartChunks(r *http.Request, name, key, uploadID str
 
 func (c Controller) UploadMultipartChunk(r *http.Request, name, key, uploadID string, partNumber int, reader io.Reader) (etag string, err error) {
 	c.logger.Tracef("UploadMultipartChunk: name=%+v, key=%+v, uploadID=%+v partNumber=%+v", name, key, uploadID, partNumber)
+	vars := mux.Vars(r)
+	tx := vars["tx"]
+
+	bucket, err := models.GetBucket(tx, name)
+	if err != nil {
+		if gorm.IsRecordNotFoundError(err) {
+			err = s2.NoSuchBucketError(r)
+		}
+		return
+	}
 
 	bytes, err := ioutil.ReadAll(reader)
 	if err != nil {
 		return "", s2.InternalError(r, err)
 	}
 
-	c.DB.Lock.Lock()
-	defer c.DB.Lock.Unlock()
-
-	bucket, err := c.DB.Bucket(r, name)
+	multipart, err := models.UpsertMultipart(tx, bucket.ID, key, uploadID, partNumber, bytes)
 	if err != nil {
-		return "", err
+		return
 	}
 
-	multipart, err := bucket.Multipart(r, key, uploadID)
-	if err != nil {
-		return "", err
-	}
-
-	hash := md5.Sum(bytes)
-	multipart[partNumber] = bytes
-	return fmt.Sprintf("%x", hash), nil
+	etag = multipart.ETag
+	return nil
 }

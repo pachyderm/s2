@@ -10,12 +10,14 @@ import (
 func (c Controller) ListBuckets(r *http.Request) (owner *s2.User, buckets []s2.Bucket, err error) {
 	c.logger.Tracef("ListBuckets")
 
-	c.DB.Lock.RLock()
-	defer c.DB.Lock.RUnlock()
+	var dbBuckets []models.Bucket
+	if err := db.Find(&dbBuckets).Err; err != nil {
+		return
+	}
 
-	for bucket := range c.DB.Buckets {
+	for bucket := range dbBuckets {
 		buckets = append(buckets, s2.Bucket{
-			Name:         bucket,
+			Name:         bucket.Name,
 			CreationDate: models.Epoch,
 		})
 	}

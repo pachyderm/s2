@@ -1,13 +1,11 @@
 package controllers
 
 import (
-	"crypto/md5"
-	"fmt"
 	"net/http"
 	_ "net/http/pprof"
-	"sort"
 	"strings"
 
+	"github.com/gorilla/mux"
 	"github.com/pachyderm/s2"
 	"github.com/pachyderm/s2/example/models"
 )
@@ -21,33 +19,31 @@ func (c Controller) GetLocation(r *http.Request, name string) (location string, 
 // delimiters.
 func (c Controller) ListObjects(r *http.Request, name, prefix, marker, delimiter string, maxKeys int) (contents []s2.Contents, commonPrefixes []s2.CommonPrefixes, isTruncated bool, err error) {
 	c.logger.Tracef("ListObjects: name=%+v, prefix=%+v, marker=%+v, delimiter=%+v, maxKeys=%+v", name, prefix, marker, delimiter, maxKeys)
+	vars := mux.Vars(r)
+	tx := vars["tx"]
 
-	c.DB.Lock.RLock()
-	defer c.DB.Lock.RUnlock()
+	bucket, err := models.GetBucket(tx, name)
+	if err != nil {
+		if gorm.IsRecordNotFoundError(err) {
+			err = s2.NoSuchBucketError(r)
+		}
+		return
+	}
 
 	if delimiter != "" {
 		err = s2.NotImplementedError(r)
 		return
 	}
 
-	bucket, err := c.DB.Bucket(r, name)
+	var objects []*models.Objects
+	objects, err = models.ListObjects(tx, bucket.ID, marker, maxKeys+1)
 	if err != nil {
-		return
+		return err
 	}
 
-	keys := []string{}
-	for key := range bucket.Objects {
-		keys = append(keys, key)
-	}
-
-	sort.Strings(keys)
-
-	for _, key := range keys {
-		if key <= marker {
+	for _, object := range objects {
+		if !strings.HasPrefix(object.Key, prefix) {
 			continue
-		}
-		if !strings.HasPrefix(key, prefix) {
-			break
 		}
 
 		if len(contents)+len(commonPrefixes) >= maxKeys {
@@ -57,14 +53,11 @@ func (c Controller) ListObjects(r *http.Request, name, prefix, marker, delimiter
 			break
 		}
 
-		bytes := bucket.Objects[key]
-		hash := md5.Sum(bytes)
-
 		contents = append(contents, s2.Contents{
-			Key:          key,
+			Key:          object.Key,
 			LastModified: models.Epoch,
-			ETag:         fmt.Sprintf("%x", hash),
-			Size:         uint64(len(bytes)),
+			ETag:         object.ETag,
+			Size:         uint64(len(object.Contents)),
 			StorageClass: models.StorageClass,
 			Owner:        models.GlobalUser,
 		})
@@ -81,31 +74,34 @@ func (c Controller) ListVersionedObjects(r *http.Request, name, prefix, keyMarke
 
 func (c Controller) CreateBucket(r *http.Request, name string) error {
 	c.logger.Tracef("CreateBucket: %+v", name)
+	vars := mux.Vars(r)
+	tx := vars["tx"]
 
-	c.DB.Lock.Lock()
-	defer c.DB.Lock.Unlock()
-
-	_, ok := c.DB.Buckets[name]
-	if ok {
+	_, err := models.GetBucket(tx, name)
+	if err == nil {
 		return s2.BucketAlreadyOwnedByYouError(r)
+	} else if !gorm.IsRecordNotFoundError(err) {
+		return err
 	}
 
-	c.DB.Buckets[name] = models.NewBucket()
-	return nil
+	_, err = models.CreateBucket(tx, name)
+	return err
 }
 
 func (c Controller) DeleteBucket(r *http.Request, name string) error {
 	c.logger.Tracef("DeleteBucket: %+v", name)
+	vars := mux.Vars(r)
+	tx := vars["tx"]
 
-	c.DB.Lock.Lock()
-	defer c.DB.Lock.Unlock()
-
-	_, err := c.DB.Bucket(r, name)
+	bucket, err := models.GetBucket(tx, name)
 	if err != nil {
-		return err
+		if gorm.IsRecordNotFoundError(err) {
+			err = s2.NoSuchBucketError(r)
+		}
+		return
 	}
-	delete(c.DB.Buckets, name)
-	return nil
+
+	return db.Delete(bucket).Err
 }
 
 func (c Controller) GetBucketVersioning(r *http.Request, name string) (status string, err error) {
