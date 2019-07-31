@@ -31,12 +31,6 @@ func (c Controller) ListObjects(r *http.Request, name, prefix, marker, delimiter
 		return
 	}
 
-	if delimiter != "" {
-		c.rollback(tx)
-		err = s2.NotImplementedError(r)
-		return
-	}
-
 	var objects []models.Object
 	objects, err = models.ListObjects(tx, bucket.ID, marker, maxKeys+1)
 	if err != nil {
@@ -45,8 +39,15 @@ func (c Controller) ListObjects(r *http.Request, name, prefix, marker, delimiter
 	}
 
 	for _, object := range objects {
-		if !strings.HasPrefix(object.Key, prefix) {
+		if !strings.HasPrefix(object.Key, prefix) || isDelimiterFiltered(object.Key, prefix, delimiter) {
 			continue
+		}
+
+		if delimiter != "" {
+			parts := strings.SplitN(object.Key[len(prefix):], delimiter, 2)
+			if len(parts) == 2 && len(parts[1]) > 0 {
+				continue
+			}
 		}
 
 		if len(contents)+len(commonPrefixes) >= maxKeys {
@@ -84,11 +85,11 @@ func (c Controller) ListVersionedObjects(r *http.Request, name, prefix, keyMarke
 		return
 	}
 
-	if delimiter != "" || bucket.Versioning != s2.VersioningEnabled {
-		c.rollback(tx)
-		err = s2.NotImplementedError(r)
-		return
-	}
+	// if bucket.Versioning != s2.VersioningEnabled {
+	// 	c.rollback(tx)
+	// 	err = s2.NotImplementedError(r)
+	// 	return
+	// }
 
 	var objects []models.Object
 	objects, err = models.ListObjectVersions(tx, bucket.ID, keyMarker, versionMarker, maxKeys+1)
@@ -98,7 +99,7 @@ func (c Controller) ListVersionedObjects(r *http.Request, name, prefix, keyMarke
 	}
 
 	for _, object := range objects {
-		if !strings.HasPrefix(object.Key, prefix) {
+		if !strings.HasPrefix(object.Key, prefix) || isDelimiterFiltered(object.Key, prefix, delimiter) {
 			continue
 		}
 
@@ -224,4 +225,12 @@ func (c Controller) SetBucketVersioning(r *http.Request, name, status string) er
 
 	c.commit(tx)
 	return nil
+}
+
+func isDelimiterFiltered(key, prefix, delimiter string) bool {
+	if delimiter == "" {
+		return false
+	}
+	parts := strings.SplitN(key[len(prefix):], delimiter, 2)
+	return len(parts) == 2 && len(parts[1]) > 0
 }
