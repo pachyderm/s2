@@ -9,6 +9,7 @@ import (
 
     "github.com/jinzhu/gorm"
     "github.com/pachyderm/s2"
+    "github.com/pachyderm/s2/examples/sql/util"
 )
 
 var (
@@ -32,8 +33,9 @@ func Init(db *gorm.DB) error {
 }
 
 type Bucket struct {
-    ID   uint   `gorm:"primary_key"`
-    Name string `gorm:"not null,unique_index"`
+    ID         uint   `gorm:"primary_key"`
+    Name       string `gorm:"not null,unique_index"`
+    Versioning *bool
 }
 
 func CreateBucket(db *gorm.DB, name string) (*Bucket, error) {
@@ -49,44 +51,82 @@ func GetBucket(db *gorm.DB, name string) (Bucket, error) {
 }
 
 type Object struct {
-    ID uint `gorm:"primary_key"`
+    ID        uint       `gorm:"primary_key"`
+    DeletedAt *time.Time `gorm:"index" jsonapi:"attr,deleted_at"`
 
     BucketID uint   `gorm:"not null"`
-    ETag     string `gorm:"not null"`
     Key      string `gorm:"not null,index:idx_object_key"`
-    Content  []byte `gorm:"not null"`
+    Version  string `gorm:"index:idx_object_version"`
+    Current  bool   `gorm:"not null,index:idx_object_current"`
+
+    ETag    string `gorm:"not null"`
+    Content []byte `gorm:"not null"`
 }
 
 func GetObject(db *gorm.DB, bucketID uint, key string) (Object, error) {
     var object Object
-    err := db.Where("bucket_id = ? AND key = ?", bucketID, key).First(&object).Error
+    err := db.Where("bucket_id = ? AND key = ? AND current = 't' AND deleted_at IS NULL", bucketID, key).First(&object).Error
+    return object, err
+}
+
+func GetObjectVersion(db *gorm.DB, bucketID uint, key, version string) (Object, error) {
+    var object Object
+    err := db.Where("bucket_id = ? AND key = ? AND version = ?", bucketID, key, version).First(&object).Error
     return object, err
 }
 
 func ListObjects(db *gorm.DB, bucketID uint, marker string, limit int) ([]Object, error) {
     var objects []Object
-    err := db.Limit(limit).Order("bucket_id, key").Where("bucket_id = ? AND key > ?", bucketID, marker).Find(&objects).Error
+    err := db.Limit(limit).Order("bucket_id, key").Where("bucket_id = ? AND key > ? AND current ='t' AND deleted_at IS NULL", bucketID, marker).Find(&objects).Error
+    return objects, err
+}
+
+func ListObjectVersions(db *gorm.DB, bucketID uint, keyMarker, versionMarker string, limit int) ([]Object, error) {
+    var objects []Object
+    err := db.Limit(limit).Order("bucket_id, key, version").Where("bucket_id = ? AND key >= ? AND version > ?", bucketID, keyMarker, versionMarker).Find(&objects).Error
     return objects, err
 }
 
 func UpsertObject(db *gorm.DB, bucketID uint, key string, content []byte) (Object, error) {
-    object := Object{
+    objToCreate := Object{
         BucketID: bucketID,
         ETag:     fmt.Sprintf("%x", md5.Sum(content)),
         Key:      key,
         Content:  content,
+        Version:  util.RandomString(10),
+        Current:  true,
     }
-    err := db.FirstOrCreate(&object, Object{
-        BucketID: bucketID,
-        Key:      key,
-    }).Error
-    return object, err
+
+    existingObj, err := GetObject(db, bucketID, key)
+    if err != nil {
+        if !gorm.IsRecordNotFoundError(err) {
+            return objToCreate, err
+        }
+    } else {
+        existingObj.Current = false
+        err = db.Save(&existingObj).Error
+        if err != nil {
+            return objToCreate, err
+        }
+    }
+
+    err = db.Create(&objToCreate).Error
+    return objToCreate, err
 }
 
 func DeleteObject(db *gorm.DB, bucketID uint, key string) error {
     return db.Delete(Object{
         BucketID: bucketID,
         Key:      key,
+        Current:  true,
+    }).Error
+}
+
+func DeleteObjectVersion(db *gorm.DB, bucketID uint, key, version string) error {
+    return db.Delete(Object{
+        BucketID: bucketID,
+        Key:      key,
+        Version:  version,
     }).Error
 }
 

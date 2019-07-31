@@ -3,23 +3,13 @@ package controllers
 import (
 	"io"
 	"io/ioutil"
-	"math/rand"
 	"net/http"
 
 	"github.com/jinzhu/gorm"
 	"github.com/pachyderm/s2"
 	"github.com/pachyderm/s2/examples/sql/models"
+	"github.com/pachyderm/s2/examples/sql/util"
 )
-
-const randomStringOptions = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-
-func randomString(n int) string {
-	b := make([]byte, n)
-	for i := range b {
-		b[i] = randomStringOptions[rand.Intn(len(randomStringOptions))]
-	}
-	return string(b)
-}
 
 func (c Controller) ListMultipart(r *http.Request, name, keyMarker, uploadIDMarker string, maxUploads int) (isTruncated bool, uploads []s2.Upload, err error) {
 	c.logger.Tracef("ListMultipart: name=%+v, keyMarker=%+v, uploadIDMarker=%+v, maxUploads=%+v", name, keyMarker, uploadIDMarker, maxUploads)
@@ -76,7 +66,7 @@ func (c Controller) InitMultipart(r *http.Request, name, key string) (uploadID s
 	}
 
 	c.commit(tx)
-	uploadID = randomString(10)
+	uploadID = util.RandomString(10)
 	return
 }
 

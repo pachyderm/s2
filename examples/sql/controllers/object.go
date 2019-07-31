@@ -26,7 +26,12 @@ func (c Controller) GetObject(r *http.Request, name, key, version string) (etag 
 		return
 	}
 
-	object, err := models.GetObject(tx, bucket.ID, key)
+	var object models.Object
+	if version != "" {
+		object, err = models.GetObject(tx, bucket.ID, key)
+	} else {
+		object, err = models.GetObjectVersion(tx, bucket.ID, key, version)
+	}
 	if err != nil {
 		tx.Rollback()
 		if gorm.IsRecordNotFoundError(err) {
@@ -37,6 +42,7 @@ func (c Controller) GetObject(r *http.Request, name, key, version string) (etag 
 
 	etag = object.ETag
 	modTime = models.Epoch
+	fetchedVersion = object.Version
 	content = bytes.NewReader(object.Content)
 	c.commit(tx)
 	return
@@ -70,6 +76,7 @@ func (c Controller) PutObject(r *http.Request, name, key string, reader io.Reade
 	}
 
 	etag = object.ETag
+	createdVersion = object.Version
 	c.commit(tx)
 	return
 }
@@ -88,7 +95,11 @@ func (c Controller) DeleteObject(r *http.Request, name, key, version string) (re
 		return
 	}
 
-	err = models.DeleteObject(tx, bucket.ID, key)
+	if version != "" {
+		err = models.DeleteObjectVersion(tx, bucket.ID, key, version)
+	} else {
+		err = models.DeleteObject(tx, bucket.ID, key)
+	}
 	if err != nil {
 		tx.Rollback()
 		return
