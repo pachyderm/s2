@@ -3,7 +3,7 @@ package controllers
 import (
 	"net/http"
 
-	"github.com/pachyderm/s2/example/models"
+	"github.com/pachyderm/s2/examples/sql/models"
 )
 
 func (c Controller) SecretKey(r *http.Request, accessKey string, region *string) (secretKey *string, err error) {

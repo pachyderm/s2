@@ -5,9 +5,9 @@ import (
 	_ "net/http/pprof"
 	"strings"
 
-	"github.com/gorilla/mux"
+	"github.com/jinzhu/gorm"
 	"github.com/pachyderm/s2"
-	"github.com/pachyderm/s2/example/models"
+	"github.com/pachyderm/s2/examples/sql/models"
 )
 
 func (c Controller) GetLocation(r *http.Request, name string) (location string, err error) {
@@ -19,11 +19,12 @@ func (c Controller) GetLocation(r *http.Request, name string) (location string, 
 // delimiters.
 func (c Controller) ListObjects(r *http.Request, name, prefix, marker, delimiter string, maxKeys int) (contents []s2.Contents, commonPrefixes []s2.CommonPrefixes, isTruncated bool, err error) {
 	c.logger.Tracef("ListObjects: name=%+v, prefix=%+v, marker=%+v, delimiter=%+v, maxKeys=%+v", name, prefix, marker, delimiter, maxKeys)
-	vars := mux.Vars(r)
-	tx := vars["tx"]
+	tx := c.db.Begin()
 
-	bucket, err := models.GetBucket(tx, name)
+	var bucket models.Bucket
+	bucket, err = models.GetBucket(tx, name)
 	if err != nil {
+		tx.Rollback()
 		if gorm.IsRecordNotFoundError(err) {
 			err = s2.NoSuchBucketError(r)
 		}
@@ -31,14 +32,16 @@ func (c Controller) ListObjects(r *http.Request, name, prefix, marker, delimiter
 	}
 
 	if delimiter != "" {
+		tx.Rollback()
 		err = s2.NotImplementedError(r)
 		return
 	}
 
-	var objects []*models.Objects
+	var objects []models.Object
 	objects, err = models.ListObjects(tx, bucket.ID, marker, maxKeys+1)
 	if err != nil {
-		return err
+		tx.Rollback()
+		return
 	}
 
 	for _, object := range objects {
@@ -57,12 +60,13 @@ func (c Controller) ListObjects(r *http.Request, name, prefix, marker, delimiter
 			Key:          object.Key,
 			LastModified: models.Epoch,
 			ETag:         object.ETag,
-			Size:         uint64(len(object.Contents)),
+			Size:         uint64(len(object.Content)),
 			StorageClass: models.StorageClass,
 			Owner:        models.GlobalUser,
 		})
 	}
 
+	c.commit(tx)
 	return
 }
 
@@ -72,36 +76,51 @@ func (c Controller) ListVersionedObjects(r *http.Request, name, prefix, keyMarke
 	return
 }
 
-func (c Controller) CreateBucket(r *http.Request, name string) error {
+func (c Controller) CreateBucket(r *http.Request, name string) (err error) {
 	c.logger.Tracef("CreateBucket: %+v", name)
-	vars := mux.Vars(r)
-	tx := vars["tx"]
+	tx := c.db.Begin()
 
-	_, err := models.GetBucket(tx, name)
+	_, err = models.GetBucket(tx, name)
 	if err == nil {
-		return s2.BucketAlreadyOwnedByYouError(r)
+		tx.Rollback()
+		err = s2.BucketAlreadyOwnedByYouError(r)
+		return
 	} else if !gorm.IsRecordNotFoundError(err) {
-		return err
+		tx.Rollback()
+		return
 	}
 
 	_, err = models.CreateBucket(tx, name)
-	return err
+	if err != nil {
+		tx.Rollback()
+		return
+	}
+
+	c.commit(tx)
+	return
 }
 
-func (c Controller) DeleteBucket(r *http.Request, name string) error {
+func (c Controller) DeleteBucket(r *http.Request, name string) (err error) {
 	c.logger.Tracef("DeleteBucket: %+v", name)
-	vars := mux.Vars(r)
-	tx := vars["tx"]
+	tx := c.db.Begin()
 
 	bucket, err := models.GetBucket(tx, name)
 	if err != nil {
+		tx.Rollback()
 		if gorm.IsRecordNotFoundError(err) {
 			err = s2.NoSuchBucketError(r)
 		}
 		return
 	}
 
-	return db.Delete(bucket).Err
+	err = tx.Delete(bucket).Error
+	if err != nil {
+		tx.Rollback()
+		return
+	}
+
+	c.commit(tx)
+	return
 }
 
 func (c Controller) GetBucketVersioning(r *http.Request, name string) (status string, err error) {

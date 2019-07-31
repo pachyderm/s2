@@ -6,9 +6,10 @@ import (
 	"time"
 
 	"github.com/jinzhu/gorm"
+	_ "github.com/jinzhu/gorm/dialects/sqlite"
 	"github.com/pachyderm/s2"
-	"github.com/pachyderm/s2/example/controllers"
-	"github.com/pachyderm/s2/example/models"
+	"github.com/pachyderm/s2/examples/sql/controllers"
+	"github.com/pachyderm/s2/examples/sql/models"
 	"github.com/sirupsen/logrus"
 )
 
@@ -26,7 +27,7 @@ func main() {
 	})
 
 	s3 := s2.NewS2(logger, 0, 5*time.Second)
-	controller := controllers.NewController(logger)
+	controller := controllers.NewController(logger, db)
 	s3.Auth = controller
 	s3.Service = controller
 	s3.Bucket = controller
@@ -40,19 +41,7 @@ func main() {
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			logger.Infof("%s %s", r.Method, r.RequestURI)
 			logger.Infof("headers: %+v", r.Header)
-
-			vars := mux.Vars(r)
-			tx := db.Begin()
-			vars["tx"] = tx
 			router.ServeHTTP(w, r)
-
-			if w.StatusCode < 200 || w.StatusCode > 399 {
-				tx.Rollback()
-			} else {
-				if err := tx.Commit().Error; err != nil {
-					logger.WithError(err).Error("could not commit request transaction")
-				}
-			}
 		}),
 		ErrorLog:     stdlog.New(logger.Writer(), "", 0),
 		ReadTimeout:  15 * time.Second,
