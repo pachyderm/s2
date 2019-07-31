@@ -62,12 +62,14 @@ func (c Controller) PutObject(r *http.Request, name, key string, reader io.Reade
 		return
 	}
 
-	_, err = models.UpsertObject(tx, bucket.ID, key, bytes)
+	var object models.Object
+	object, err = models.UpsertObject(tx, bucket.ID, key, bytes)
 	if err != nil {
 		tx.Rollback()
 		return
 	}
 
+	etag = object.ETag
 	c.commit(tx)
 	return
 }
