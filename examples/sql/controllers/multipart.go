@@ -18,7 +18,7 @@ func (c Controller) ListMultipart(r *http.Request, name, keyMarker, uploadIDMark
 	var bucket models.Bucket
 	bucket, err = models.GetBucket(tx, name)
 	if err != nil {
-		tx.Rollback()
+		c.rollback(tx)
 		if gorm.IsRecordNotFoundError(err) {
 			err = s2.NoSuchBucketError(r)
 		}
@@ -27,7 +27,7 @@ func (c Controller) ListMultipart(r *http.Request, name, keyMarker, uploadIDMark
 
 	parts, err := models.ListMultiparts(tx, bucket.ID, keyMarker, uploadIDMarker, maxUploads+1)
 	if err != nil {
-		tx.Rollback()
+		c.rollback(tx)
 		return
 	}
 
@@ -58,7 +58,7 @@ func (c Controller) InitMultipart(r *http.Request, name, key string) (uploadID s
 
 	_, err = models.GetBucket(tx, name)
 	if err != nil {
-		tx.Rollback()
+		c.rollback(tx)
 		if gorm.IsRecordNotFoundError(err) {
 			err = s2.NoSuchBucketError(r)
 		}
@@ -76,7 +76,7 @@ func (c Controller) AbortMultipart(r *http.Request, name, key, uploadID string) 
 
 	bucket, err := models.GetBucket(tx, name)
 	if err != nil {
-		tx.Rollback()
+		c.rollback(tx)
 		if gorm.IsRecordNotFoundError(err) {
 			return s2.NoSuchBucketError(r)
 		}
@@ -85,7 +85,7 @@ func (c Controller) AbortMultipart(r *http.Request, name, key, uploadID string) 
 
 	err = models.DeleteMultiparts(tx, bucket.ID, key, uploadID)
 	if err != nil {
-		tx.Rollback()
+		c.rollback(tx)
 		return err
 	}
 
@@ -100,7 +100,7 @@ func (c Controller) CompleteMultipart(r *http.Request, name, key, uploadID strin
 	var bucket models.Bucket
 	bucket, err = models.GetBucket(tx, name)
 	if err != nil {
-		tx.Rollback()
+		c.rollback(tx)
 		if gorm.IsRecordNotFoundError(err) {
 			err = s2.NoSuchBucketError(r)
 		}
@@ -113,19 +113,19 @@ func (c Controller) CompleteMultipart(r *http.Request, name, key, uploadID strin
 		var chunk models.Multipart
 		chunk, err = models.GetMultipart(tx, bucket.ID, key, uploadID, part.PartNumber)
 		if err != nil {
-			tx.Rollback()
+			c.rollback(tx)
 			if gorm.IsRecordNotFoundError(err) {
 				err = s2.InvalidPartError(r)
 			}
 			return
 		}
 		if chunk.ETag != part.ETag {
-			tx.Rollback()
+			c.rollback(tx)
 			err = s2.InvalidPartError(r)
 			return
 		}
 		if i < len(parts)-1 && len(chunk.Content) < 5*1024*1024 {
-			tx.Rollback()
+			c.rollback(tx)
 			// each part, except for the last, is expected to be at least 5mb
 			// in s3
 			err = s2.EntityTooSmallError(r)
@@ -138,11 +138,11 @@ func (c Controller) CompleteMultipart(r *http.Request, name, key, uploadID strin
 	var obj models.Object
 	obj, err = models.UpsertObject(tx, bucket.ID, key, bytes)
 	if err != nil {
-		tx.Rollback()
+		c.rollback(tx)
 		return
 	}
 	if err = models.DeleteMultiparts(tx, bucket.ID, key, uploadID); err != nil {
-		tx.Rollback()
+		c.rollback(tx)
 		return
 	}
 
@@ -159,7 +159,7 @@ func (c Controller) ListMultipartChunks(r *http.Request, name, key, uploadID str
 	var bucket models.Bucket
 	bucket, err = models.GetBucket(tx, name)
 	if err != nil {
-		tx.Rollback()
+		c.rollback(tx)
 		if gorm.IsRecordNotFoundError(err) {
 			err = s2.NoSuchBucketError(r)
 		}
@@ -169,7 +169,7 @@ func (c Controller) ListMultipartChunks(r *http.Request, name, key, uploadID str
 	var chunks []models.Multipart
 	chunks, err = models.ListMultipartChunks(tx, bucket.ID, key, uploadID, partNumberMarker, maxParts+1)
 	if err != nil {
-		tx.Rollback()
+		c.rollback(tx)
 		return
 	}
 
@@ -201,7 +201,7 @@ func (c Controller) UploadMultipartChunk(r *http.Request, name, key, uploadID st
 	var bucket models.Bucket
 	bucket, err = models.GetBucket(tx, name)
 	if err != nil {
-		tx.Rollback()
+		c.rollback(tx)
 		if gorm.IsRecordNotFoundError(err) {
 			err = s2.NoSuchBucketError(r)
 		}
@@ -210,13 +210,13 @@ func (c Controller) UploadMultipartChunk(r *http.Request, name, key, uploadID st
 
 	bytes, err := ioutil.ReadAll(reader)
 	if err != nil {
-		tx.Rollback()
+		c.rollback(tx)
 		return
 	}
 
 	multipart, err := models.UpsertMultipart(tx, bucket.ID, key, uploadID, partNumber, bytes)
 	if err != nil {
-		tx.Rollback()
+		c.rollback(tx)
 		return
 	}
 

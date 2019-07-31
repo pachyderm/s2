@@ -1,6 +1,8 @@
 package models
 
-// TODO: handle cascading deletes
+// TODO:
+// - handle cascading deletes
+// - composite primary keys
 
 import (
     "crypto/md5"
@@ -35,7 +37,7 @@ func Init(db *gorm.DB) error {
 type Bucket struct {
     ID         uint   `gorm:"primary_key"`
     Name       string `gorm:"not null,unique_index"`
-    Versioning *bool
+    Versioning string `gorm:"not null"`
 }
 
 func CreateBucket(db *gorm.DB, name string) (*Bucket, error) {
@@ -65,25 +67,41 @@ type Object struct {
 
 func GetObject(db *gorm.DB, bucketID uint, key string) (Object, error) {
     var object Object
-    err := db.Where("bucket_id = ? AND key = ? AND current = 't' AND deleted_at IS NULL", bucketID, key).First(&object).Error
+    err := db.Where("bucket_id = ? AND key = ? AND current = 1 AND deleted_at IS NULL", bucketID, key).First(&object).Error
+    if object.Content == nil {
+        object.Content = []byte{}
+    }
     return object, err
 }
 
 func GetObjectVersion(db *gorm.DB, bucketID uint, key, version string) (Object, error) {
     var object Object
     err := db.Where("bucket_id = ? AND key = ? AND version = ?", bucketID, key, version).First(&object).Error
+    if object.Content == nil {
+        object.Content = []byte{}
+    }
     return object, err
 }
 
 func ListObjects(db *gorm.DB, bucketID uint, marker string, limit int) ([]Object, error) {
     var objects []Object
-    err := db.Limit(limit).Order("bucket_id, key").Where("bucket_id = ? AND key > ? AND current ='t' AND deleted_at IS NULL", bucketID, marker).Find(&objects).Error
+    err := db.Limit(limit).Order("bucket_id, key").Where("bucket_id = ? AND key > ? AND current = 1 AND deleted_at IS NULL", bucketID, marker).Find(&objects).Error
+    for _, object := range objects {
+        if object.Content == nil {
+            object.Content = []byte{}
+        }
+    }
     return objects, err
 }
 
 func ListObjectVersions(db *gorm.DB, bucketID uint, keyMarker, versionMarker string, limit int) ([]Object, error) {
     var objects []Object
     err := db.Limit(limit).Order("bucket_id, key, version").Where("bucket_id = ? AND key >= ? AND version > ?", bucketID, keyMarker, versionMarker).Find(&objects).Error
+    for _, object := range objects {
+        if object.Content == nil {
+            object.Content = []byte{}
+        }
+    }
     return objects, err
 }
 

@@ -15,6 +15,7 @@ import (
 
 func main() {
 	db, err := gorm.Open("sqlite3", ":memory:")
+	//db, err := gorm.Open("sqlite3", "foo.db")
 	if err != nil {
 		panic(err)
 	}

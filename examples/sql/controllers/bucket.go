@@ -24,7 +24,7 @@ func (c Controller) ListObjects(r *http.Request, name, prefix, marker, delimiter
 	var bucket models.Bucket
 	bucket, err = models.GetBucket(tx, name)
 	if err != nil {
-		tx.Rollback()
+		c.rollback(tx)
 		if gorm.IsRecordNotFoundError(err) {
 			err = s2.NoSuchBucketError(r)
 		}
@@ -32,7 +32,7 @@ func (c Controller) ListObjects(r *http.Request, name, prefix, marker, delimiter
 	}
 
 	if delimiter != "" {
-		tx.Rollback()
+		c.rollback(tx)
 		err = s2.NotImplementedError(r)
 		return
 	}
@@ -40,7 +40,7 @@ func (c Controller) ListObjects(r *http.Request, name, prefix, marker, delimiter
 	var objects []models.Object
 	objects, err = models.ListObjects(tx, bucket.ID, marker, maxKeys+1)
 	if err != nil {
-		tx.Rollback()
+		c.rollback(tx)
 		return
 	}
 
@@ -77,15 +77,15 @@ func (c Controller) ListVersionedObjects(r *http.Request, name, prefix, keyMarke
 	var bucket models.Bucket
 	bucket, err = models.GetBucket(tx, name)
 	if err != nil {
-		tx.Rollback()
+		c.rollback(tx)
 		if gorm.IsRecordNotFoundError(err) {
 			err = s2.NoSuchBucketError(r)
 		}
 		return
 	}
 
-	if delimiter != "" || bucket.Versioning == nil || !*bucket.Versioning {
-		tx.Rollback()
+	if delimiter != "" || bucket.Versioning != s2.VersioningEnabled {
+		c.rollback(tx)
 		err = s2.NotImplementedError(r)
 		return
 	}
@@ -93,7 +93,7 @@ func (c Controller) ListVersionedObjects(r *http.Request, name, prefix, keyMarke
 	var objects []models.Object
 	objects, err = models.ListObjectVersions(tx, bucket.ID, keyMarker, versionMarker, maxKeys+1)
 	if err != nil {
-		tx.Rollback()
+		c.rollback(tx)
 		return
 	}
 
@@ -141,17 +141,17 @@ func (c Controller) CreateBucket(r *http.Request, name string) (err error) {
 
 	_, err = models.GetBucket(tx, name)
 	if err == nil {
-		tx.Rollback()
+		c.rollback(tx)
 		err = s2.BucketAlreadyOwnedByYouError(r)
 		return
 	} else if !gorm.IsRecordNotFoundError(err) {
-		tx.Rollback()
+		c.rollback(tx)
 		return
 	}
 
 	_, err = models.CreateBucket(tx, name)
 	if err != nil {
-		tx.Rollback()
+		c.rollback(tx)
 		return
 	}
 
@@ -165,7 +165,7 @@ func (c Controller) DeleteBucket(r *http.Request, name string) (err error) {
 
 	bucket, err := models.GetBucket(tx, name)
 	if err != nil {
-		tx.Rollback()
+		c.rollback(tx)
 		if gorm.IsRecordNotFoundError(err) {
 			err = s2.NoSuchBucketError(r)
 		}
@@ -174,7 +174,7 @@ func (c Controller) DeleteBucket(r *http.Request, name string) (err error) {
 
 	err = tx.Delete(bucket).Error
 	if err != nil {
-		tx.Rollback()
+		c.rollback(tx)
 		return
 	}
 
@@ -194,12 +194,7 @@ func (c Controller) GetBucketVersioning(r *http.Request, name string) (status st
 		return
 	}
 
-	if bucket.Versioning == nil {
-		return s2.VersioningDisabled, nil
-	} else if *bucket.Versioning {
-		return s2.VersioningEnabled, nil
-	}
-	return s2.VersioningSuspended, nil
+	return bucket.Versioning, nil
 }
 
 func (c Controller) SetBucketVersioning(r *http.Request, name, status string) error {
@@ -208,28 +203,23 @@ func (c Controller) SetBucketVersioning(r *http.Request, name, status string) er
 
 	bucket, err := models.GetBucket(tx, name)
 	if err != nil {
-		tx.Rollback()
+		c.rollback(tx)
 		if gorm.IsRecordNotFoundError(err) {
 			return s2.NoSuchBucketError(r)
 		}
 		return err
 	}
 
-	switch status {
-	case s2.VersioningDisabled:
-		if bucket.Versioning != nil {
-			tx.Rollback()
-			return s2.IllegalVersioningConfigurationError(r)
-		}
-		break
-	case s2.VersioningSuspended:
-		value := false
-		bucket.Versioning = &value
-		break
-	case s2.VersioningEnabled:
-		value := true
-		bucket.Versioning = &value
-		break
+	if status == s2.VersioningDisabled && bucket.Versioning != "" {
+		c.rollback(tx)
+		return s2.IllegalVersioningConfigurationError(r)
+	}
+
+	bucket.Versioning = status
+
+	if err = tx.Save(&bucket).Error; err != nil {
+		c.rollback(tx)
+		return err
 	}
 
 	c.commit(tx)

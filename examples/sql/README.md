@@ -1,12 +1,6 @@
 # s2 example
 
-This example builds off of s2 and [gorm](http://gorm.io/) to provide an S3-like API, with objects stored in an in-memory sqlite instance. It has a few shortcomings:
-
-1) Data will be dropped when the process exits.
-2) Object listing has been purposefully simplified.
-3) There is no support for versioning.
-
-But it should be enough to demonstrate how to use s2.
+This example builds off of s2 and [gorm](http://gorm.io/) to provide an S3-like API, with objects stored in an in-memory sqlite instance. Note that data is not persisted, and a few simplifications have been made to make the example more manageable.
 
 ## Tests
 

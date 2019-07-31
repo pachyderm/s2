@@ -19,7 +19,7 @@ func (c Controller) GetObject(r *http.Request, name, key, version string) (etag 
 	var bucket models.Bucket
 	bucket, err = models.GetBucket(tx, name)
 	if err != nil {
-		tx.Rollback()
+		c.rollback(tx)
 		if gorm.IsRecordNotFoundError(err) {
 			err = s2.NoSuchBucketError(r)
 		}
@@ -28,12 +28,12 @@ func (c Controller) GetObject(r *http.Request, name, key, version string) (etag 
 
 	var object models.Object
 	if version != "" {
-		object, err = models.GetObject(tx, bucket.ID, key)
-	} else {
 		object, err = models.GetObjectVersion(tx, bucket.ID, key, version)
+	} else {
+		object, err = models.GetObject(tx, bucket.ID, key)
 	}
 	if err != nil {
-		tx.Rollback()
+		c.rollback(tx)
 		if gorm.IsRecordNotFoundError(err) {
 			err = s2.NoSuchKeyError(r)
 		}
@@ -55,7 +55,7 @@ func (c Controller) PutObject(r *http.Request, name, key string, reader io.Reade
 	var bucket models.Bucket
 	bucket, err = models.GetBucket(tx, name)
 	if err != nil {
-		tx.Rollback()
+		c.rollback(tx)
 		if gorm.IsRecordNotFoundError(err) {
 			err = s2.NoSuchBucketError(r)
 		}
@@ -64,14 +64,14 @@ func (c Controller) PutObject(r *http.Request, name, key string, reader io.Reade
 
 	bytes, err := ioutil.ReadAll(reader)
 	if err != nil {
-		tx.Rollback()
+		c.rollback(tx)
 		return
 	}
 
 	var object models.Object
 	object, err = models.UpsertObject(tx, bucket.ID, key, bytes)
 	if err != nil {
-		tx.Rollback()
+		c.rollback(tx)
 		return
 	}
 
@@ -88,7 +88,7 @@ func (c Controller) DeleteObject(r *http.Request, name, key, version string) (re
 	var bucket models.Bucket
 	bucket, err = models.GetBucket(tx, name)
 	if err != nil {
-		tx.Rollback()
+		c.rollback(tx)
 		if gorm.IsRecordNotFoundError(err) {
 			err = s2.NoSuchBucketError(r)
 		}
@@ -101,7 +101,7 @@ func (c Controller) DeleteObject(r *http.Request, name, key, version string) (re
 		err = models.DeleteObject(tx, bucket.ID, key)
 	}
 	if err != nil {
-		tx.Rollback()
+		c.rollback(tx)
 		return
 	}
 

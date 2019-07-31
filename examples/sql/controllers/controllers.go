@@ -17,8 +17,14 @@ func NewController(logger *logrus.Entry, db *gorm.DB) Controller {
 	}
 }
 
+func (c Controller) rollback(tx *gorm.DB) {
+	if err := tx.Rollback().Error; err != nil {
+		c.logger.WithError(err).Error("could not rollback transaction")
+	}
+}
+
 func (c Controller) commit(tx *gorm.DB) {
 	if err := tx.Commit().Error; err != nil {
-		c.logger.WithError(err).Error("could not commit request transaction")
+		c.logger.WithError(err).Error("could not commit transaction")
 	}
 }
