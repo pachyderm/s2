@@ -261,7 +261,7 @@ func (h bucketHandler) setVersioning(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if payload.Status != VersionDisabled && payload.Status != VersionSuspended && payload.Status != VersionEnabled {
+	if payload.Status != VersioningDisabled && payload.Status != VersioningSuspended && payload.Status != VersioningEnabled {
 		WriteError(h.logger, w, r, IllegalVersioningConfigurationError(r))
 		return
 	}
