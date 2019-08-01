@@ -42,8 +42,10 @@ func (c Controller) GetObject(r *http.Request, name, key, version string) (etag 
 
 	etag = object.ETag
 	modTime = models.Epoch
-	fetchedVersion = object.Version
 	content = bytes.NewReader(object.Content)
+	if bucket.Versioning == s2.VersioningEnabled {
+		fetchedVersion = object.Version
+	}
 	c.commit(tx)
 	return
 }
@@ -76,7 +78,9 @@ func (c Controller) PutObject(r *http.Request, name, key string, reader io.Reade
 	}
 
 	etag = object.ETag
-	createdVersion = object.Version
+	if bucket.Versioning == s2.VersioningEnabled {
+		createdVersion = object.Version
+	}
 	c.commit(tx)
 	return
 }
@@ -95,16 +99,20 @@ func (c Controller) DeleteObject(r *http.Request, name, key, version string) (re
 		return
 	}
 
+	var object models.Object
 	if version != "" {
-		err = models.DeleteObjectVersion(tx, bucket.ID, key, version)
+		object, err = models.DeleteObjectVersion(tx, bucket.ID, key, version)
 	} else {
-		err = models.DeleteObject(tx, bucket.ID, key)
+		object, err = models.DeleteObject(tx, bucket.ID, key)
 	}
 	if err != nil {
 		c.rollback(tx)
 		return
 	}
 
+	if bucket.Versioning == s2.VersioningEnabled {
+		removedVersion = object.Version
+	}
 	c.commit(tx)
 	return
 }

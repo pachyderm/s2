@@ -96,7 +96,7 @@ func ListObjects(db *gorm.DB, bucketID uint, marker string, limit int) ([]Object
 
 func ListObjectVersions(db *gorm.DB, bucketID uint, keyMarker, versionMarker string, limit int) ([]Object, error) {
     var objects []Object
-    err := db.Limit(limit).Order("bucket_id, key, version").Where("bucket_id = ? AND key >= ? AND version > ?", bucketID, keyMarker, versionMarker).Find(&objects).Error
+    err := db.Limit(limit).Order("bucket_id ASC, key ASC, version ASC").Where("bucket_id = ? AND key >= ? AND version > ?", bucketID, keyMarker, versionMarker).Find(&objects).Error
     for _, object := range objects {
         if object.Content == nil {
             object.Content = []byte{}
@@ -132,20 +132,24 @@ func UpsertObject(db *gorm.DB, bucketID uint, key string, content []byte) (Objec
     return objToCreate, err
 }
 
-func DeleteObject(db *gorm.DB, bucketID uint, key string) error {
-    return db.Delete(Object{
+func DeleteObject(db *gorm.DB, bucketID uint, key string) (Object, error) {
+    var object Object
+    err := db.Delete(&object, Object{
         BucketID: bucketID,
         Key:      key,
         Current:  true,
     }).Error
+    return object, err
 }
 
-func DeleteObjectVersion(db *gorm.DB, bucketID uint, key, version string) error {
-    return db.Delete(Object{
+func DeleteObjectVersion(db *gorm.DB, bucketID uint, key, version string) (Object, error) {
+    var object Object
+    err := db.Delete(&object, Object{
         BucketID: bucketID,
         Key:      key,
         Version:  version,
     }).Error
+    return object, err
 }
 
 type Multipart struct {
