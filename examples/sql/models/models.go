@@ -153,7 +153,7 @@ func DeleteObjectVersion(db *gorm.DB, bucketID uint, key, version string) (Objec
 }
 
 type Multipart struct {
-    ID string `gorm:"primary_key"`
+    ID uint `gorm:"primary_key"`
 
     BucketID   uint   `gorm:"not null"`
     Key        string `gorm:"not null,index:idx_multipart_key"`
