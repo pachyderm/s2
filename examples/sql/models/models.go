@@ -176,7 +176,12 @@ func GetUpload(db *gorm.DB, bucketID uint, key, id string) (Upload, error) {
 
 func ListUploads(db *gorm.DB, bucketID uint, keyMarker string, idMarker string, limit int) ([]Upload, error) {
     var parts []Upload
-    err := db.Limit(limit).Order("bucket_id, key, id").Where("bucket_id = ? AND key >= ? AND id > ?", bucketID, keyMarker, idMarker).Find(&parts).Error
+    var err error
+    if idMarker == "" {
+        err = db.Limit(limit).Order("bucket_id, key, id").Where("bucket_id = ? AND key >= ? AND id > ?", bucketID, keyMarker, idMarker).Find(&parts).Error
+    } else {
+        err = db.Limit(limit).Order("bucket_id, key, id").Where("bucket_id = ? AND key > ?", bucketID, keyMarker).Find(&parts).Error
+    }
     return parts, err
 }
 
