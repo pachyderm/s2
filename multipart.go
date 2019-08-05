@@ -129,9 +129,21 @@ func (h *multipartHandler) list(w http.ResponseWriter, r *http.Request) {
 		Uploads:        uploads,
 	}
 
-	if result.IsTruncated && len(result.Uploads) > 0 {
-		result.NextKeyMarker = result.Uploads[len(result.Uploads)-1].Key
-		result.NextUploadIDMarker = result.Uploads[len(result.Uploads)-1].UploadID
+	if result.IsTruncated {
+		highKey := ""
+		highUploadID := ""
+
+		for _, upload := range result.Uploads {
+			if upload.Key > highKey {
+				highKey = upload.Key
+			}
+			if upload.UploadID > highUploadID {
+				highUploadID = upload.UploadID
+			}
+		}
+
+		result.NextKeyMarker = highKey
+		result.NextUploadIDMarker = highUploadID
 	}
 
 	writeXML(h.logger, w, r, http.StatusOK, result)
@@ -188,8 +200,16 @@ func (h *multipartHandler) listChunks(w http.ResponseWriter, r *http.Request) {
 		Parts:            parts,
 	}
 
-	if result.IsTruncated && len(result.Parts) > 0 {
-		result.NextPartNumberMarker = result.Parts[len(result.Parts)-1].PartNumber
+	if result.IsTruncated {
+		high := 0
+
+		for _, part := range result.Parts {
+			if part.PartNumber > high {
+				high = part.PartNumber
+			}
+		}
+
+		result.NextPartNumberMarker = high
 	}
 
 	writeXML(h.logger, w, r, http.StatusOK, result)
