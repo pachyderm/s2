@@ -96,13 +96,17 @@ func ListObjects(db *gorm.DB, bucketID uint, marker string, limit int) ([]Object
 
 func ListObjectVersions(db *gorm.DB, bucketID uint, keyMarker, versionMarker string, limit int) ([]Object, error) {
     var objects []Object
-    err := db.Limit(limit).Order("bucket_id ASC, key ASC, version ASC").Where("bucket_id = ? AND key >= ? AND version > ?", bucketID, keyMarker, versionMarker).Find(&objects).Error
-    for _, object := range objects {
-        if object.Content == nil {
-            object.Content = []byte{}
-        }
+    q := db.Limit(limit).Order("bucket_id ASC, key ASC, version ASC")
+
+    if keyMarker == "" && versionMarker == "" {
+        q = q.Find(&objects)
+    } else if versionMarker == "" {
+        q = q.Where("bucket_id = ? AND key > ?", bucketID, keyMarker).Find(&objects)
+    } else {
+        q = q.Where("bucket_id = ? AND key >= ? AND version > ?", bucketID, keyMarker, versionMarker).Find(&objects)
     }
-    return objects, err
+
+    return objects, q.Error
 }
 
 func UpsertObject(db *gorm.DB, bucketID uint, key string, content []byte) (Object, error) {
@@ -176,13 +180,17 @@ func GetUpload(db *gorm.DB, bucketID uint, key, id string) (Upload, error) {
 
 func ListUploads(db *gorm.DB, bucketID uint, keyMarker string, idMarker string, limit int) ([]Upload, error) {
     var parts []Upload
-    var err error
-    if idMarker == "" {
-        err = db.Limit(limit).Order("bucket_id, key, id").Where("bucket_id = ? AND key >= ? AND id > ?", bucketID, keyMarker, idMarker).Find(&parts).Error
+    q := db.Limit(limit).Order("bucket_id, key, id")
+
+    if keyMarker == "" && idMarker == "" {
+        q = q.Find(&parts)
+    } else if idMarker == "" {
+        q = q.Where("bucket_id = ? AND key > ?", bucketID, keyMarker).Find(&parts)
     } else {
-        err = db.Limit(limit).Order("bucket_id, key, id").Where("bucket_id = ? AND key > ?", bucketID, keyMarker).Find(&parts).Error
+        q = q.Where("bucket_id = ? AND key >= ? AND id > ?", bucketID, keyMarker, idMarker).Find(&parts)
     }
-    return parts, err
+
+    return parts, q.Error
 }
 
 type UploadPart struct {
