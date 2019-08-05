@@ -8,7 +8,6 @@ import (
 	"github.com/jinzhu/gorm"
 	"github.com/pachyderm/s2"
 	"github.com/pachyderm/s2/examples/sql/models"
-	"github.com/pachyderm/s2/examples/sql/util"
 )
 
 func (c Controller) ListMultipart(r *http.Request, name, keyMarker, uploadIDMarker string, maxUploads int) (isTruncated bool, uploads []s2.Upload, err error) {
@@ -25,13 +24,13 @@ func (c Controller) ListMultipart(r *http.Request, name, keyMarker, uploadIDMark
 		return
 	}
 
-	parts, err := models.ListMultiparts(tx, bucket.ID, keyMarker, uploadIDMarker, maxUploads+1)
+	dbUploads, err := models.ListUploads(tx, bucket.ID, keyMarker, uploadIDMarker, maxUploads+1)
 	if err != nil {
 		c.rollback(tx)
 		return
 	}
 
-	for _, part := range parts {
+	for _, dbUpload := range dbUploads {
 		if len(uploads) >= maxUploads {
 			if maxUploads > 0 {
 				isTruncated = true
@@ -40,8 +39,8 @@ func (c Controller) ListMultipart(r *http.Request, name, keyMarker, uploadIDMark
 		}
 
 		uploads = append(uploads, s2.Upload{
-			Key:          part.Key,
-			UploadID:     part.UploadID,
+			Key:          dbUpload.Key,
+			UploadID:     dbUpload.ID,
 			Initiator:    models.GlobalUser,
 			StorageClass: models.StorageClass,
 			Initiated:    models.Epoch,
@@ -56,7 +55,7 @@ func (c Controller) InitMultipart(r *http.Request, name, key string) (uploadID s
 	c.logger.Tracef("InitMultipart: name=%+v, key=%+v", name, key)
 	tx := c.db.Begin()
 
-	_, err = models.GetBucket(tx, name)
+	bucket, err := models.GetBucket(tx, name)
 	if err != nil {
 		c.rollback(tx)
 		if gorm.IsRecordNotFoundError(err) {
@@ -65,8 +64,14 @@ func (c Controller) InitMultipart(r *http.Request, name, key string) (uploadID s
 		return
 	}
 
+	upload, err := models.CreateUpload(tx, bucket.ID, key)
+	if err != nil {
+		c.rollback(tx)
+		return
+	}
+
+	uploadID = upload.ID
 	c.commit(tx)
-	uploadID = util.RandomString(10)
 	return
 }
 
@@ -83,7 +88,16 @@ func (c Controller) AbortMultipart(r *http.Request, name, key, uploadID string) 
 		return err
 	}
 
-	err = models.DeleteMultiparts(tx, bucket.ID, key, uploadID)
+	_, err = models.GetUpload(tx, bucket.ID, key, uploadID)
+	if err != nil {
+		c.rollback(tx)
+		if gorm.IsRecordNotFoundError(err) {
+			return s2.NoSuchUploadError(r)
+		}
+		return err
+	}
+
+	err = models.DeleteUpload(tx, bucket.ID, key, uploadID)
 	if err != nil {
 		c.rollback(tx)
 		return err
@@ -107,11 +121,21 @@ func (c Controller) CompleteMultipart(r *http.Request, name, key, uploadID strin
 		return
 	}
 
-	bytes := []byte{}
+	_, err = models.GetUpload(tx, bucket.ID, key, uploadID)
+	if err != nil {
+		c.rollback(tx)
+		if gorm.IsRecordNotFoundError(err) {
+			err = s2.NoSuchUploadError(r)
+			return
+		}
+		return
+	}
+
+	content := []byte{}
 
 	for i, part := range parts {
-		var chunk models.Multipart
-		chunk, err = models.GetMultipart(tx, bucket.ID, key, uploadID, part.PartNumber)
+		var uploadPart models.UploadPart
+		uploadPart, err = models.GetUploadPart(tx, uploadID, part.PartNumber)
 		if err != nil {
 			c.rollback(tx)
 			if gorm.IsRecordNotFoundError(err) {
@@ -119,29 +143,29 @@ func (c Controller) CompleteMultipart(r *http.Request, name, key, uploadID strin
 			}
 			return
 		}
-		if chunk.ETag != part.ETag {
+		if uploadPart.ETag != part.ETag {
 			c.rollback(tx)
 			err = s2.InvalidPartError(r)
 			return
 		}
-		if i < len(parts)-1 && len(chunk.Content) < 5*1024*1024 {
+		// each part, except for the last, is expected to be at least 5mb in
+		// s3
+		if i < len(parts)-1 && len(uploadPart.Content) < 5*1024*1024 {
 			c.rollback(tx)
-			// each part, except for the last, is expected to be at least 5mb
-			// in s3
 			err = s2.EntityTooSmallError(r)
 			return
 		}
 
-		bytes = append(bytes, chunk.Content...)
+		content = append(content, uploadPart.Content...)
 	}
 
 	var obj models.Object
-	obj, err = models.UpsertObject(tx, bucket.ID, key, bytes)
+	obj, err = models.UpsertObject(tx, bucket.ID, key, content)
 	if err != nil {
 		c.rollback(tx)
 		return
 	}
-	if err = models.DeleteMultiparts(tx, bucket.ID, key, uploadID); err != nil {
+	if err = models.DeleteUpload(tx, bucket.ID, key, uploadID); err != nil {
 		c.rollback(tx)
 		return
 	}
@@ -156,8 +180,7 @@ func (c Controller) ListMultipartChunks(r *http.Request, name, key, uploadID str
 	c.logger.Tracef("ListMultipartChunks: name=%+v, key=%+v, uploadID=%+v, partNumberMarker=%+v, maxParts=%+v", name, key, uploadID, partNumberMarker, maxParts)
 	tx := c.db.Begin()
 
-	var bucket models.Bucket
-	bucket, err = models.GetBucket(tx, name)
+	_, err = models.GetBucket(tx, name)
 	if err != nil {
 		c.rollback(tx)
 		if gorm.IsRecordNotFoundError(err) {
@@ -166,14 +189,13 @@ func (c Controller) ListMultipartChunks(r *http.Request, name, key, uploadID str
 		return
 	}
 
-	var chunks []models.Multipart
-	chunks, err = models.ListMultipartChunks(tx, bucket.ID, key, uploadID, partNumberMarker, maxParts+1)
+	uploadParts, err := models.ListUploadParts(tx, uploadID, partNumberMarker, maxParts+1)
 	if err != nil {
 		c.rollback(tx)
 		return
 	}
 
-	for _, chunk := range chunks {
+	for _, uploadPart := range uploadParts {
 		if len(parts) >= maxParts {
 			if maxParts > 0 {
 				isTruncated = true
@@ -182,8 +204,8 @@ func (c Controller) ListMultipartChunks(r *http.Request, name, key, uploadID str
 		}
 
 		parts = append(parts, s2.Part{
-			PartNumber: chunk.PartNumber,
-			ETag:       chunk.ETag,
+			PartNumber: uploadPart.Number,
+			ETag:       uploadPart.ETag,
 		})
 	}
 
@@ -208,19 +230,28 @@ func (c Controller) UploadMultipartChunk(r *http.Request, name, key, uploadID st
 		return
 	}
 
-	bytes, err := ioutil.ReadAll(reader)
+	_, err = models.GetUpload(tx, bucket.ID, key, uploadID)
+	if err != nil {
+		c.rollback(tx)
+		if gorm.IsRecordNotFoundError(err) {
+			err = s2.NoSuchUploadError(r)
+		}
+		return
+	}
+
+	content, err := ioutil.ReadAll(reader)
 	if err != nil {
 		c.rollback(tx)
 		return
 	}
 
-	multipart, err := models.UpsertMultipart(tx, bucket.ID, key, uploadID, partNumber, bytes)
+	uploadPart, err := models.UpsertUploadPart(tx, uploadID, partNumber, content)
 	if err != nil {
 		c.rollback(tx)
 		return
 	}
 
-	etag = multipart.ETag
+	etag = uploadPart.ETag
 	c.commit(tx)
 	return
 }

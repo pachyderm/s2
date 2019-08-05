@@ -31,7 +31,7 @@ var (
 )
 
 func Init(db *gorm.DB) error {
-    return db.AutoMigrate(&Bucket{}, &Object{}, &Multipart{}).Error
+    return db.AutoMigrate(&Bucket{}, &Object{}, &Upload{}, &UploadPart{}).Error
 }
 
 type Bucket struct {
@@ -152,57 +152,89 @@ func DeleteObjectVersion(db *gorm.DB, bucketID uint, key, version string) (Objec
     return object, err
 }
 
-type Multipart struct {
-    ID uint `gorm:"primary_key"`
-
-    BucketID   uint   `gorm:"not null"`
-    Key        string `gorm:"not null,index:idx_multipart_key"`
-    UploadID   string `gorm:"not null,index:idx_multipart_upload_id"`
-    PartNumber int    `gorm:"not null"`
-    ETag       string `gorm:"not null"`
-    Content    []byte `gorm:"not null"`
+type Upload struct {
+    ID       string `gorm:"primary_key"`
+    BucketID uint   `gorm:"not null"`
+    Key      string `gorm:"not null,index:idx_upload_key"`
 }
 
-func UpsertMultipart(db *gorm.DB, bucketID uint, key string, uploadID string, partNumber int, content []byte) (Multipart, error) {
-    multipart := Multipart{
-        BucketID:   bucketID,
-        Key:        key,
-        UploadID:   uploadID,
-        PartNumber: partNumber,
-        ETag:       fmt.Sprintf("%x", md5.Sum(content)),
-        Content:    content,
-    }
-    err := db.FirstOrCreate(&multipart, Multipart{
-        BucketID:   bucketID,
-        Key:        key,
-        UploadID:   uploadID,
-        PartNumber: partNumber,
-    }).Error
-    return multipart, err
-}
-
-func GetMultipart(db *gorm.DB, bucketID uint, key, uploadID string, partNumber int) (Multipart, error) {
-    var multipart Multipart
-    err := db.Where("bucket_id = ? AND key = ? AND upload_id = ? AND part_number = ?", bucketID, key, uploadID, partNumber).First(&multipart).Error
-    return multipart, err
-}
-
-func ListMultiparts(db *gorm.DB, bucketID uint, keyMarker string, uploadIDMarker string, limit int) ([]Multipart, error) {
-    var parts []Multipart
-    err := db.Limit(limit).Order("bucket_id, key, upload_id, part_number").Where("bucket_id = ? AND key >= ? AND upload_id > ?", bucketID, keyMarker, uploadIDMarker).Find(&parts).Error
-    return parts, err
-}
-
-func ListMultipartChunks(db *gorm.DB, bucketID uint, key string, uploadID string, partNumberMarker, limit int) ([]Multipart, error) {
-    var parts []Multipart
-    err := db.Limit(limit).Order("bucket_id, key, upload_id, part_number").Where("bucket_id = ? AND key = ? AND upload_id = ? AND part_number > ?", bucketID, key, uploadID, partNumberMarker).Find(&parts).Error
-    return parts, err
-}
-
-func DeleteMultiparts(db *gorm.DB, bucketID uint, key, uploadID string) error {
-    return db.Delete(Multipart{
+func CreateUpload(db *gorm.DB, bucketID uint, key string) (Upload, error) {
+    upload := Upload{
+        ID:       util.RandomString(10),
         BucketID: bucketID,
         Key:      key,
+    }
+    err := db.Create(&upload).Error
+    return upload, err
+}
+
+func GetUpload(db *gorm.DB, bucketID uint, key, id string) (Upload, error) {
+    var upload Upload
+    err := db.Where("bucket_id = ? AND key = ? AND id = ?", bucketID, key, id).First(&upload).Error
+    return upload, err
+}
+
+func ListUploads(db *gorm.DB, bucketID uint, keyMarker string, idMarker string, limit int) ([]Upload, error) {
+    var parts []Upload
+    err := db.Limit(limit).Order("bucket_id, key, id").Where("bucket_id = ? AND key >= ? AND id > ?", bucketID, keyMarker, idMarker).Find(&parts).Error
+    return parts, err
+}
+
+type UploadPart struct {
+    UploadID string `gorm:"not null,primary_key"`
+    Number   int    `gorm:"not null,primary_key"`
+    ETag     string `gorm:"not null"`
+    Content  []byte `gorm:"not null"`
+}
+
+func UpsertUploadPart(db *gorm.DB, uploadID string, number int, content []byte) (UploadPart, error) {
+    partToCreate := UploadPart{
+        UploadID: uploadID,
+        Number:   number,
+        ETag:     fmt.Sprintf("%x", md5.Sum(content)),
+        Content:  content,
+    }
+
+    existingPart, err := GetUploadPart(db, uploadID, number)
+    if err != nil {
+        if !gorm.IsRecordNotFoundError(err) {
+            return partToCreate, err
+        }
+    } else {
+        existingPart.ETag = partToCreate.ETag
+        existingPart.Content = partToCreate.Content
+        err = db.Save(&existingPart).Error
+        if err != nil {
+            return existingPart, err
+        }
+    }
+
+    err = db.Create(&partToCreate).Error
+    return partToCreate, err
+}
+
+func GetUploadPart(db *gorm.DB, uploadID string, number int) (UploadPart, error) {
+    var part UploadPart
+    err := db.Where("upload_id = ? AND number = ?", uploadID, number).First(&part).Error
+    return part, err
+}
+
+func ListUploadParts(db *gorm.DB, uploadID string, partNumberMarker, limit int) ([]UploadPart, error) {
+    var parts []UploadPart
+    err := db.Limit(limit).Order("upload_id, number").Where("upload_id = ? AND number > ?", uploadID, partNumberMarker).Find(&parts).Error
+    return parts, err
+}
+
+func DeleteUpload(db *gorm.DB, bucketID uint, key, uploadID string) error {
+    err := db.Delete(Upload{
+        ID:       uploadID,
+        BucketID: bucketID,
+        Key:      key,
+    }).Error
+    if err != nil {
+        return err
+    }
+    return db.Delete(UploadPart{
         UploadID: uploadID,
     }).Error
 }
