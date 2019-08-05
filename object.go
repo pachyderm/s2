@@ -47,6 +47,9 @@ func (h *objectHandler) get(w http.ResponseWriter, r *http.Request) {
 	bucket := vars["bucket"]
 	key := vars["key"]
 	versionId := r.FormValue("versionId")
+	if versionId == "null" {
+		versionId = ""
+	}
 
 	etag, version, modTime, content, err := h.controller.GetObject(r, bucket, key, versionId)
 	if err != nil {
@@ -93,6 +96,9 @@ func (h *objectHandler) del(w http.ResponseWriter, r *http.Request) {
 	bucket := vars["bucket"]
 	key := vars["key"]
 	versionId := r.FormValue("versionId")
+	if versionId == "null" {
+		versionId = ""
+	}
 
 	version, err := h.controller.DeleteObject(r, bucket, key, versionId)
 	if err != nil {
