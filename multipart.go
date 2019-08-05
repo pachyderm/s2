@@ -47,7 +47,7 @@ type MultipartController interface {
 	// AbortMultipart aborts an in-progress multipart upload
 	AbortMultipart(r *http.Request, bucket, key, uploadID string) error
 	// CompleteMultipart finishes a multipart upload
-	CompleteMultipart(r *http.Request, bucket, key, uploadID string, parts []Part) (location, etag string, err error)
+	CompleteMultipart(r *http.Request, bucket, key, uploadID string, parts []Part) (location, etag, createdVersion string, err error)
 	// ListMultipartChunks lists the constituent chunks of an in-progress
 	// multipart upload
 	ListMultipartChunks(r *http.Request, bucket, key, uploadID string, partNumberMarker, maxParts int) (initiator, owner *User, storageClass string, isTruncated bool, parts []Part, err error)
@@ -71,8 +71,8 @@ func (c unimplementedMultipartController) AbortMultipart(r *http.Request, bucket
 	return NotImplementedError(r)
 }
 
-func (c unimplementedMultipartController) CompleteMultipart(r *http.Request, bucket, key, uploadID string, parts []Part) (location, etag string, err error) {
-	return "", "", NotImplementedError(r)
+func (c unimplementedMultipartController) CompleteMultipart(r *http.Request, bucket, key, uploadID string, parts []Part) (location, etag, createdVersion string, err error) {
+	return "", "", "", NotImplementedError(r)
 }
 
 func (c unimplementedMultipartController) ListMultipartChunks(r *http.Request, bucket, key, uploadID string, partNumberMarker, maxcParts int) (initiator, owner *User, storageClass string, isTruncated bool, parts []Part, err error) {
@@ -257,18 +257,21 @@ func (h *multipartHandler) complete(w http.ResponseWriter, r *http.Request) {
 	ch := make(chan struct {
 		location string
 		etag     string
+		version  string
 		err      error
 	})
 
 	go func() {
-		location, etag, err := h.controller.CompleteMultipart(r, bucket, key, uploadID, payload.Parts)
+		location, etag, createdVersion, err := h.controller.CompleteMultipart(r, bucket, key, uploadID, payload.Parts)
 		ch <- struct {
 			location string
 			etag     string
+			version  string
 			err      error
 		}{
 			location: location,
 			etag:     etag,
+			version:  createdVersion,
 			err:      err,
 		}
 	}()
@@ -305,6 +308,10 @@ func (h *multipartHandler) complete(w http.ResponseWriter, r *http.Request) {
 					Key:      key,
 					Location: value.location,
 					ETag:     addETagQuotes(value.etag),
+				}
+
+				if value.version != "" {
+					w.Header().Set("x-amz-version-id", value.version)
 				}
 
 				if streaming {

@@ -107,7 +107,7 @@ func (c *Controller) AbortMultipart(r *http.Request, name, key, uploadID string)
 	return nil
 }
 
-func (c *Controller) CompleteMultipart(r *http.Request, name, key, uploadID string, parts []s2.Part) (location, etag string, err error) {
+func (c *Controller) CompleteMultipart(r *http.Request, name, key, uploadID string, parts []s2.Part) (location, etag, createdVersion string, err error) {
 	c.logger.Tracef("CompleteMultipart: name=%+v, key=%+v, uploadID=%+v, parts=%+v", name, key, uploadID, parts)
 	tx := c.trans()
 
@@ -172,6 +172,9 @@ func (c *Controller) CompleteMultipart(r *http.Request, name, key, uploadID stri
 
 	location = models.Location
 	etag = obj.ETag
+	if bucket.Versioning == s2.VersioningEnabled {
+		createdVersion = obj.Version
+	}
 	c.commit(tx)
 	return
 }
