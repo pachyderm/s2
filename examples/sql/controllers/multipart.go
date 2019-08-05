@@ -10,9 +10,9 @@ import (
 	"github.com/pachyderm/s2/examples/sql/models"
 )
 
-func (c Controller) ListMultipart(r *http.Request, name, keyMarker, uploadIDMarker string, maxUploads int) (isTruncated bool, uploads []s2.Upload, err error) {
+func (c *Controller) ListMultipart(r *http.Request, name, keyMarker, uploadIDMarker string, maxUploads int) (isTruncated bool, uploads []s2.Upload, err error) {
 	c.logger.Tracef("ListMultipart: name=%+v, keyMarker=%+v, uploadIDMarker=%+v, maxUploads=%+v", name, keyMarker, uploadIDMarker, maxUploads)
-	tx := c.db.Begin()
+	tx := c.trans()
 
 	var bucket models.Bucket
 	bucket, err = models.GetBucket(tx, name)
@@ -51,9 +51,9 @@ func (c Controller) ListMultipart(r *http.Request, name, keyMarker, uploadIDMark
 	return
 }
 
-func (c Controller) InitMultipart(r *http.Request, name, key string) (uploadID string, err error) {
+func (c *Controller) InitMultipart(r *http.Request, name, key string) (uploadID string, err error) {
 	c.logger.Tracef("InitMultipart: name=%+v, key=%+v", name, key)
-	tx := c.db.Begin()
+	tx := c.trans()
 
 	bucket, err := models.GetBucket(tx, name)
 	if err != nil {
@@ -75,9 +75,9 @@ func (c Controller) InitMultipart(r *http.Request, name, key string) (uploadID s
 	return
 }
 
-func (c Controller) AbortMultipart(r *http.Request, name, key, uploadID string) error {
+func (c *Controller) AbortMultipart(r *http.Request, name, key, uploadID string) error {
 	c.logger.Tracef("AbortMultipart: name=%+v, key=%+v, uploadID=%+v", name, key, uploadID)
-	tx := c.db.Begin()
+	tx := c.trans()
 
 	bucket, err := models.GetBucket(tx, name)
 	if err != nil {
@@ -107,9 +107,9 @@ func (c Controller) AbortMultipart(r *http.Request, name, key, uploadID string) 
 	return nil
 }
 
-func (c Controller) CompleteMultipart(r *http.Request, name, key, uploadID string, parts []s2.Part) (location, etag string, err error) {
+func (c *Controller) CompleteMultipart(r *http.Request, name, key, uploadID string, parts []s2.Part) (location, etag string, err error) {
 	c.logger.Tracef("CompleteMultipart: name=%+v, key=%+v, uploadID=%+v, parts=%+v", name, key, uploadID, parts)
-	tx := c.db.Begin()
+	tx := c.trans()
 
 	var bucket models.Bucket
 	bucket, err = models.GetBucket(tx, name)
@@ -176,9 +176,9 @@ func (c Controller) CompleteMultipart(r *http.Request, name, key, uploadID strin
 	return
 }
 
-func (c Controller) ListMultipartChunks(r *http.Request, name, key, uploadID string, partNumberMarker, maxParts int) (initiator, owner *s2.User, storageClass string, isTruncated bool, parts []s2.Part, err error) {
+func (c *Controller) ListMultipartChunks(r *http.Request, name, key, uploadID string, partNumberMarker, maxParts int) (initiator, owner *s2.User, storageClass string, isTruncated bool, parts []s2.Part, err error) {
 	c.logger.Tracef("ListMultipartChunks: name=%+v, key=%+v, uploadID=%+v, partNumberMarker=%+v, maxParts=%+v", name, key, uploadID, partNumberMarker, maxParts)
-	tx := c.db.Begin()
+	tx := c.trans()
 
 	_, err = models.GetBucket(tx, name)
 	if err != nil {
@@ -216,9 +216,15 @@ func (c Controller) ListMultipartChunks(r *http.Request, name, key, uploadID str
 	return
 }
 
-func (c Controller) UploadMultipartChunk(r *http.Request, name, key, uploadID string, partNumber int, reader io.Reader) (etag string, err error) {
+func (c *Controller) UploadMultipartChunk(r *http.Request, name, key, uploadID string, partNumber int, reader io.Reader) (etag string, err error) {
 	c.logger.Tracef("UploadMultipartChunk: name=%+v, key=%+v, uploadID=%+v partNumber=%+v", name, key, uploadID, partNumber)
-	tx := c.db.Begin()
+
+	content, err := ioutil.ReadAll(reader)
+	if err != nil {
+		return
+	}
+
+	tx := c.trans()
 
 	var bucket models.Bucket
 	bucket, err = models.GetBucket(tx, name)
@@ -236,12 +242,6 @@ func (c Controller) UploadMultipartChunk(r *http.Request, name, key, uploadID st
 		if gorm.IsRecordNotFoundError(err) {
 			err = s2.NoSuchUploadError(r)
 		}
-		return
-	}
-
-	content, err := ioutil.ReadAll(reader)
-	if err != nil {
-		c.rollback(tx)
 		return
 	}
 

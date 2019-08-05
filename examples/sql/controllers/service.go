@@ -7,11 +7,13 @@ import (
 	"github.com/pachyderm/s2/examples/sql/models"
 )
 
-func (c Controller) ListBuckets(r *http.Request) (owner *s2.User, buckets []s2.Bucket, err error) {
+func (c *Controller) ListBuckets(r *http.Request) (owner *s2.User, buckets []s2.Bucket, err error) {
 	c.logger.Tracef("ListBuckets")
+	tx := c.trans()
 
 	var dbBuckets []*models.Bucket
-	if err = c.db.Find(&dbBuckets).Error; err != nil {
+	if err = tx.Find(&dbBuckets).Error; err != nil {
+		c.rollback(tx)
 		return
 	}
 
@@ -23,5 +25,6 @@ func (c Controller) ListBuckets(r *http.Request) (owner *s2.User, buckets []s2.B
 	}
 
 	owner = &models.GlobalUser
+	c.commit(tx)
 	return
 }

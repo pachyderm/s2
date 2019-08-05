@@ -10,16 +10,16 @@ import (
 	"github.com/pachyderm/s2/examples/sql/models"
 )
 
-func (c Controller) GetLocation(r *http.Request, name string) (location string, err error) {
+func (c *Controller) GetLocation(r *http.Request, name string) (location string, err error) {
 	c.logger.Tracef("GetLocation: %+v", name)
 	return models.Location, nil
 }
 
 // Lists bucket contents. Note that this doesn't support common prefixes or
 // delimiters.
-func (c Controller) ListObjects(r *http.Request, name, prefix, marker, delimiter string, maxKeys int) (contents []s2.Contents, commonPrefixes []s2.CommonPrefixes, isTruncated bool, err error) {
+func (c *Controller) ListObjects(r *http.Request, name, prefix, marker, delimiter string, maxKeys int) (contents []s2.Contents, commonPrefixes []s2.CommonPrefixes, isTruncated bool, err error) {
 	c.logger.Tracef("ListObjects: name=%+v, prefix=%+v, marker=%+v, delimiter=%+v, maxKeys=%+v", name, prefix, marker, delimiter, maxKeys)
-	tx := c.db.Begin()
+	tx := c.trans()
 
 	var bucket models.Bucket
 	bucket, err = models.GetBucket(tx, name)
@@ -71,9 +71,9 @@ func (c Controller) ListObjects(r *http.Request, name, prefix, marker, delimiter
 	return
 }
 
-func (c Controller) ListVersionedObjects(r *http.Request, name, prefix, keyMarker, versionMarker string, delimiter string, maxKeys int) (versions []s2.Version, deleteMarkers []s2.DeleteMarker, isTruncated bool, err error) {
+func (c *Controller) ListVersionedObjects(r *http.Request, name, prefix, keyMarker, versionMarker string, delimiter string, maxKeys int) (versions []s2.Version, deleteMarkers []s2.DeleteMarker, isTruncated bool, err error) {
 	c.logger.Tracef("ListVersionedObjects: name=%+v, prefix=%+v, keyMarker=%+v, versionMarker=%+v, delimiter=%+v, maxKeys=%+v", name, prefix, keyMarker, versionMarker, delimiter, maxKeys)
-	tx := c.db.Begin()
+	tx := c.trans()
 
 	var bucket models.Bucket
 	bucket, err = models.GetBucket(tx, name)
@@ -136,9 +136,9 @@ func (c Controller) ListVersionedObjects(r *http.Request, name, prefix, keyMarke
 	return
 }
 
-func (c Controller) CreateBucket(r *http.Request, name string) (err error) {
+func (c *Controller) CreateBucket(r *http.Request, name string) (err error) {
 	c.logger.Tracef("CreateBucket: %+v", name)
-	tx := c.db.Begin()
+	tx := c.trans()
 
 	_, err = models.GetBucket(tx, name)
 	if err == nil {
@@ -160,9 +160,9 @@ func (c Controller) CreateBucket(r *http.Request, name string) (err error) {
 	return
 }
 
-func (c Controller) DeleteBucket(r *http.Request, name string) (err error) {
+func (c *Controller) DeleteBucket(r *http.Request, name string) (err error) {
 	c.logger.Tracef("DeleteBucket: %+v", name)
-	tx := c.db.Begin()
+	tx := c.trans()
 
 	bucket, err := models.GetBucket(tx, name)
 	if err != nil {
@@ -183,24 +183,27 @@ func (c Controller) DeleteBucket(r *http.Request, name string) (err error) {
 	return
 }
 
-func (c Controller) GetBucketVersioning(r *http.Request, name string) (status string, err error) {
+func (c *Controller) GetBucketVersioning(r *http.Request, name string) (status string, err error) {
 	c.logger.Tracef("GetBucketVersioning: %+v", name)
+	tx := c.trans()
 
 	var bucket models.Bucket
-	bucket, err = models.GetBucket(c.db, name)
+	bucket, err = models.GetBucket(tx, name)
 	if err != nil {
+		c.rollback(tx)
 		if gorm.IsRecordNotFoundError(err) {
 			err = s2.NoSuchBucketError(r)
 		}
 		return
 	}
 
+	c.commit(tx)
 	return bucket.Versioning, nil
 }
 
-func (c Controller) SetBucketVersioning(r *http.Request, name, status string) error {
+func (c *Controller) SetBucketVersioning(r *http.Request, name, status string) error {
 	c.logger.Tracef("SetBucketVersioning: name=%+v, status=%+v", name, status)
-	tx := c.db.Begin()
+	tx := c.trans()
 
 	bucket, err := models.GetBucket(tx, name)
 	if err != nil {
