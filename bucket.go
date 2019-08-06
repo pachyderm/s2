@@ -65,8 +65,8 @@ type BucketController interface {
 	// ListObjects lists objects within a bucket
 	ListObjects(r *http.Request, bucket, prefix, marker, delimiter string, maxKeys int) (contents []Contents, commonPrefixes []CommonPrefixes, isTruncated bool, err error)
 
-	// ListOVersionedbjects lists objects' versions within a bucket
-	ListVersionedObjects(r *http.Request, bucket, prefix, keyMarker, versionMarker string, delimiter string, maxKeys int) (versions []Version, deleteMarkers []DeleteMarker, isTruncated bool, err error)
+	// ListObjectVersions lists objects' versions within a bucket
+	ListObjectVersions(r *http.Request, bucket, prefix, keyMarker, versionMarker string, delimiter string, maxKeys int) (versions []Version, deleteMarkers []DeleteMarker, isTruncated bool, err error)
 
 	// CreateBucket creates a bucket
 	CreateBucket(r *http.Request, bucket string) error
@@ -94,7 +94,7 @@ func (c unimplementedBucketController) ListObjects(r *http.Request, bucket, pref
 	return
 }
 
-func (c unimplementedBucketController) ListVersionedObjects(r *http.Request, bucket, prefix, keyMarker, versionMarker string, delimiter string, maxKeys int) (versions []Version, deleteMarkers []DeleteMarker, isTruncated bool, err error) {
+func (c unimplementedBucketController) ListObjectVersions(r *http.Request, bucket, prefix, keyMarker, versionMarker string, delimiter string, maxKeys int) (versions []Version, deleteMarkers []DeleteMarker, isTruncated bool, err error) {
 	err = NotImplementedError(r)
 	return
 }
@@ -290,7 +290,7 @@ func (h bucketHandler) listVersions(w http.ResponseWriter, r *http.Request) {
 	versionIDMarker := r.FormValue("version-id-marker")
 	delimiter := r.FormValue("delimiter")
 
-	versions, deleteMarkers, isTruncated, err := h.controller.ListVersionedObjects(r, bucket, prefix, keyMarker, versionIDMarker, delimiter, maxKeys)
+	versions, deleteMarkers, isTruncated, err := h.controller.ListObjectVersions(r, bucket, prefix, keyMarker, versionIDMarker, delimiter, maxKeys)
 	if err != nil {
 		WriteError(h.logger, w, r, err)
 		return
