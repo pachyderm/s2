@@ -28,7 +28,7 @@ func (c *Controller) GetObject(r *http.Request, name, key, version string) (etag
 
 	var object models.Object
 	if version != "" {
-		object, err = models.GetObjectVersion(tx, bucket.ID, key, version)
+		object, err = models.GetObjectVersion(tx, bucket.ID, key, version, false)
 	} else {
 		object, err = models.GetObject(tx, bucket.ID, key)
 	}
@@ -85,7 +85,7 @@ func (c *Controller) PutObject(r *http.Request, name, key string, reader io.Read
 	return
 }
 
-func (c *Controller) DeleteObject(r *http.Request, name, key, version string) (removedVersion string, err error) {
+func (c *Controller) DeleteObject(r *http.Request, name, key, version string) (removedVersion string, wasDeleteMarker bool, err error) {
 	c.logger.Tracef("DeleteObject: name=%+v, key=%+v, version=%+v", name, key, version)
 	tx := c.trans()
 
@@ -101,13 +101,45 @@ func (c *Controller) DeleteObject(r *http.Request, name, key, version string) (r
 
 	var object models.Object
 	if version != "" {
-		object, err = models.DeleteObjectVersion(tx, bucket.ID, key, version)
+		object, err = models.GetObjectVersion(tx, bucket.ID, key, version, true)
+		if err != nil {
+			c.rollback(tx)
+			if gorm.IsRecordNotFoundError(err) {
+				err = s2.NoSuchKeyError(r)
+			}
+			return
+		}
+
+		if _, err = models.DeleteObjectVersion(tx, bucket.ID, key, version, true); err != nil {
+			c.rollback(tx)
+			return
+		}
+
+		if object.DeletedAt != nil {
+			wasDeleteMarker = true
+		}
+		if object.Current {
+			var latestObject models.Object
+			latestObject, err = models.GetLatestLivingObjectVersion(tx, bucket.ID, key)
+			if err != nil {
+				if !gorm.IsRecordNotFoundError(err) {
+					c.rollback(tx)
+					return
+				}
+			} else {
+				latestObject.Current = true
+				if err = tx.Save(&latestObject).Error; err != nil {
+					c.rollback(tx)
+					return
+				}
+			}
+		}
 	} else {
 		object, err = models.DeleteObject(tx, bucket.ID, key)
-	}
-	if err != nil {
-		c.rollback(tx)
-		return
+		if err != nil {
+			c.rollback(tx)
+			return
+		}
 	}
 
 	if bucket.Versioning == s2.VersioningEnabled {

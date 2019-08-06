@@ -2,7 +2,6 @@ package models
 
 // TODO:
 // - handle cascading deletes
-// - composite primary keys
 
 import (
     "crypto/md5"
@@ -75,8 +74,11 @@ func GetObject(db *gorm.DB, bucketID uint, key string) (Object, error) {
     return object, err
 }
 
-func GetObjectVersion(db *gorm.DB, bucketID uint, key, version string) (Object, error) {
+func GetObjectVersion(db *gorm.DB, bucketID uint, key, version string, includeDeleted bool) (Object, error) {
     var object Object
+    if includeDeleted {
+        db = db.Unscoped()
+    }
     err := db.Where("bucket_id = ? AND key = ? AND version = ?", bucketID, key, version).First(&object).Error
     if object.Content == nil {
         object.Content = []byte{}
@@ -147,13 +149,24 @@ func DeleteObject(db *gorm.DB, bucketID uint, key string) (Object, error) {
     return object, err
 }
 
-func DeleteObjectVersion(db *gorm.DB, bucketID uint, key, version string) (Object, error) {
+func DeleteObjectVersion(db *gorm.DB, bucketID uint, key, version string, includeDeleteMarkers bool) (Object, error) {
+    object, err := GetObjectVersion(db, bucketID, key, version, includeDeleteMarkers)
+    if err != nil {
+        return object, err
+    }
+    if includeDeleteMarkers {
+        db = db.Unscoped()
+    }
+    err = db.Delete(&object).Error
+    return object, err
+}
+
+func GetLatestLivingObjectVersion(db *gorm.DB, bucketID uint, key string) (Object, error) {
     var object Object
-    err := db.Delete(&object, Object{
-        BucketID: bucketID,
-        Key:      key,
-        Version:  version,
-    }).Error
+    err := db.Order("updated_at DESC").Where("bucket_id = ? AND key = ? AND deleted_at IS NULL", bucketID, key).First(&object).Error
+    if object.Content == nil {
+        object.Content = []byte{}
+    }
     return object, err
 }
 

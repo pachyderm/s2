@@ -16,7 +16,7 @@ type ObjectController interface {
 	// PutObject sets an object
 	PutObject(r *http.Request, bucket, key string, reader io.Reader) (etag, createdVersion string, err error)
 	// DeleteObject deletes an object
-	DeleteObject(r *http.Request, bucket, key, version string) (removedVersion string, err error)
+	DeleteObject(r *http.Request, bucket, key, version string) (removedVersion string, wasDeleteMarker bool, err error)
 }
 
 // unimplementedObjectController defines a controller that returns
@@ -33,8 +33,8 @@ func (c unimplementedObjectController) PutObject(r *http.Request, bucket, key st
 	return
 }
 
-func (c unimplementedObjectController) DeleteObject(r *http.Request, bucket, key, version string) (removedVersion string, err error) {
-	return "", NotImplementedError(r)
+func (c unimplementedObjectController) DeleteObject(r *http.Request, bucket, key, version string) (removedVersion string, wasDeleteMarker bool, err error) {
+	return "", false, NotImplementedError(r)
 }
 
 type objectHandler struct {
@@ -100,7 +100,7 @@ func (h *objectHandler) del(w http.ResponseWriter, r *http.Request) {
 		versionId = ""
 	}
 
-	version, err := h.controller.DeleteObject(r, bucket, key, versionId)
+	version, wasDeleteMarker, err := h.controller.DeleteObject(r, bucket, key, versionId)
 	if err != nil {
 		WriteError(h.logger, w, r, err)
 		return
@@ -108,6 +108,9 @@ func (h *objectHandler) del(w http.ResponseWriter, r *http.Request) {
 
 	if version != "" {
 		w.Header().Set("x-amz-version-id", version)
+	}
+	if wasDeleteMarker {
+		w.Header().Set("x-amz-delete-marker", "true")
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
