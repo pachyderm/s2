@@ -96,10 +96,10 @@ func ListObjects(db *gorm.DB, bucketID uint, marker string, limit int) ([]Object
 
 func ListObjectVersions(db *gorm.DB, bucketID uint, keyMarker, versionMarker string, limit int) ([]Object, error) {
     var objects []Object
-    q := db.Limit(limit).Order("bucket_id ASC, key ASC, version ASC")
+    q := db.Limit(limit).Order("bucket_id, key, version")
 
     if keyMarker == "" && versionMarker == "" {
-        q = q.Find(&objects)
+        q = q.Where("bucket_id = ?", bucketID).Find(&objects)
     } else if versionMarker == "" {
         q = q.Where("bucket_id = ? AND key > ?", bucketID, keyMarker).Find(&objects)
     } else {
@@ -183,7 +183,7 @@ func ListUploads(db *gorm.DB, bucketID uint, keyMarker string, idMarker string, 
     q := db.Limit(limit).Order("bucket_id, key, id")
 
     if keyMarker == "" && idMarker == "" {
-        q = q.Find(&parts)
+        q = q.Where("bucket_id = ?", bucketID).Find(&parts)
     } else if idMarker == "" {
         q = q.Where("bucket_id = ? AND key > ?", bucketID, keyMarker).Find(&parts)
     } else {
