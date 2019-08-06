@@ -33,7 +33,7 @@ func (c *Controller) ListObjects(r *http.Request, name, prefix, marker, delimite
 	}
 
 	var objects []models.Object
-	objects, err = models.ListObjects(tx, bucket.ID, marker, maxKeys+1)
+	objects, err = models.ListCurrentObjects(tx, bucket.ID, marker, maxKeys+1)
 	if err != nil {
 		c.rollback(tx)
 		return
@@ -93,7 +93,7 @@ func (c *Controller) ListObjectVersions(r *http.Request, name, prefix, keyMarker
 	// }
 
 	var objects []models.Object
-	objects, err = models.ListObjectVersions(tx, bucket.ID, keyMarker, versionMarker, maxKeys+1)
+	objects, err = models.ListObjects(tx, bucket.ID, keyMarker, versionMarker, maxKeys+1)
 	if err != nil {
 		c.rollback(tx)
 		return

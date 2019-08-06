@@ -51,6 +51,15 @@ func GetBucket(db *gorm.DB, name string) (Bucket, error) {
     return bucket, err
 }
 
+// Gorm has a bug where it deserializes empty byte arrays as nil, which then
+// triggers downstream serialization of the object that don't expect nil. This
+// works around the issue.
+func fixContent(object *Object) {
+    if object.Content == nil {
+        object.Content = []byte{}
+    }
+}
+
 type Object struct {
     ID        uint       `gorm:"primary_key"`
     UpdatedAt time.Time  `gorm:"index"`
@@ -65,41 +74,32 @@ type Object struct {
     Content []byte `gorm:"not null"`
 }
 
-func GetObject(db *gorm.DB, bucketID uint, key string) (Object, error) {
+func GetObject(db *gorm.DB, bucketID uint, key, version string) (Object, error) {
     var object Object
-    err := db.Where("bucket_id = ? AND key = ? AND current = 1 AND deleted_at IS NULL", bucketID, key).First(&object).Error
-    if object.Content == nil {
-        object.Content = []byte{}
-    }
+    err := db.Unscoped().Where("bucket_id = ? AND key = ? AND version = ?", bucketID, key, version).First(&object).Error
+    fixContent(&object)
     return object, err
 }
 
-func GetObjectVersion(db *gorm.DB, bucketID uint, key, version string, includeDeleted bool) (Object, error) {
+func GetCurrentObject(db *gorm.DB, bucketID uint, key string) (Object, error) {
     var object Object
-    if includeDeleted {
-        db = db.Unscoped()
-    }
-    err := db.Where("bucket_id = ? AND key = ? AND version = ?", bucketID, key, version).First(&object).Error
-    if object.Content == nil {
-        object.Content = []byte{}
-    }
+    err := db.Unscoped().Where("bucket_id = ? AND key = ? AND current = 1", bucketID, key).First(&object).Error
+    fixContent(&object)
     return object, err
 }
 
-func ListObjects(db *gorm.DB, bucketID uint, marker string, limit int) ([]Object, error) {
+func ListCurrentObjects(db *gorm.DB, bucketID uint, marker string, limit int) ([]Object, error) {
     var objects []Object
     err := db.Limit(limit).Order("bucket_id, key").Where("bucket_id = ? AND key > ? AND current = 1 AND deleted_at IS NULL", bucketID, marker).Find(&objects).Error
     for _, object := range objects {
-        if object.Content == nil {
-            object.Content = []byte{}
-        }
+        fixContent(&object)
     }
     return objects, err
 }
 
-func ListObjectVersions(db *gorm.DB, bucketID uint, keyMarker, versionMarker string, limit int) ([]Object, error) {
+func ListObjects(db *gorm.DB, bucketID uint, keyMarker, versionMarker string, limit int) ([]Object, error) {
     var objects []Object
-    q := db.Limit(limit).Order("bucket_id, key, version")
+    q := db.Unscoped().Limit(limit).Order("bucket_id, key, version")
 
     if keyMarker == "" && versionMarker == "" {
         q = q.Where("bucket_id = ?", bucketID).Find(&objects)
@@ -112,61 +112,45 @@ func ListObjectVersions(db *gorm.DB, bucketID uint, keyMarker, versionMarker str
     return objects, q.Error
 }
 
-func UpsertObject(db *gorm.DB, bucketID uint, key string, content []byte) (Object, error) {
-    objToCreate := Object{
-        BucketID: bucketID,
-        ETag:     fmt.Sprintf("%x", md5.Sum(content)),
-        Key:      key,
-        Content:  content,
-        Version:  util.RandomString(10),
-        Current:  true,
-    }
+func UpsertObject(db *gorm.DB, bucketID uint, key, version string, content []byte) (Object, error) {
+    etag := fmt.Sprintf("%x", md5.Sum(content))
 
-    existingObj, err := GetObject(db, bucketID, key)
+    object, err := GetCurrentObject(db, bucketID, key)
     if err != nil {
         if !gorm.IsRecordNotFoundError(err) {
-            return objToCreate, err
+            return Object{}, err
         }
     } else {
-        existingObj.Current = false
-        err = db.Save(&existingObj).Error
+        if object.Version == version && object.DeletedAt == nil {
+            object.ETag = etag
+            object.Content = content
+            err = db.Save(&object).Error
+            return object, err
+        }
+
+        object.Current = false
+        err = db.Unscoped().Save(&object).Error
         if err != nil {
-            return objToCreate, err
+            return Object{}, err
         }
     }
 
-    err = db.Create(&objToCreate).Error
-    return objToCreate, err
-}
-
-func DeleteObject(db *gorm.DB, bucketID uint, key string) (Object, error) {
-    var object Object
-    err := db.Delete(&object, Object{
+    newObject := Object{
         BucketID: bucketID,
+        ETag:     etag,
         Key:      key,
+        Content:  content,
+        Version:  version,
         Current:  true,
-    }).Error
-    return object, err
+    }
+    err = db.Create(&newObject).Error
+    return newObject, err
 }
 
-func DeleteObjectVersion(db *gorm.DB, bucketID uint, key, version string, includeDeleteMarkers bool) (Object, error) {
-    object, err := GetObjectVersion(db, bucketID, key, version, includeDeleteMarkers)
-    if err != nil {
-        return object, err
-    }
-    if includeDeleteMarkers {
-        db = db.Unscoped()
-    }
-    err = db.Delete(&object).Error
-    return object, err
-}
-
-func GetLatestLivingObjectVersion(db *gorm.DB, bucketID uint, key string) (Object, error) {
+func GetLatestLivingObject(db *gorm.DB, bucketID uint, key string) (Object, error) {
     var object Object
     err := db.Order("updated_at DESC").Where("bucket_id = ? AND key = ? AND deleted_at IS NULL", bucketID, key).First(&object).Error
-    if object.Content == nil {
-        object.Content = []byte{}
-    }
+    fixContent(&object)
     return object, err
 }
 

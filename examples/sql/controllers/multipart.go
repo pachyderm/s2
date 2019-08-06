@@ -8,6 +8,7 @@ import (
 	"github.com/jinzhu/gorm"
 	"github.com/pachyderm/s2"
 	"github.com/pachyderm/s2/examples/sql/models"
+	"github.com/pachyderm/s2/examples/sql/util"
 )
 
 func (c *Controller) ListMultipart(r *http.Request, name, keyMarker, uploadIDMarker string, maxUploads int) (isTruncated bool, uploads []s2.Upload, err error) {
@@ -159,8 +160,13 @@ func (c *Controller) CompleteMultipart(r *http.Request, name, key, uploadID stri
 		content = append(content, uploadPart.Content...)
 	}
 
+	version := ""
+	if bucket.Versioning == s2.VersioningEnabled {
+		version = util.RandomString(10)
+	}
+
 	var obj models.Object
-	obj, err = models.UpsertObject(tx, bucket.ID, key, content)
+	obj, err = models.UpsertObject(tx, bucket.ID, key, version, content)
 	if err != nil {
 		c.rollback(tx)
 		return
