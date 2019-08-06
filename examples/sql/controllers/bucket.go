@@ -101,7 +101,7 @@ func (c *Controller) ListObjectVersions(r *http.Request, name, prefix, keyMarker
 
 	// s3tests expects the listings to be ordered by update date
 	sort.Slice(objects, func(i, j int) bool {
-		return objects[i].CreatedAt.After(objects[j].CreatedAt)
+		return objects[i].UpdatedAt.After(objects[j].UpdatedAt)
 	})
 
 	for _, object := range objects {

@@ -86,7 +86,7 @@ func (c *Controller) PutObject(r *http.Request, name, key string, reader io.Read
 	}
 
 	var object models.Object
-	object, err = models.CreateObject(tx, bucket.ID, key, version, bytes)
+	object, err = models.UpsertObject(tx, bucket.ID, key, version, bytes)
 	if err != nil {
 		c.rollback(tx)
 		return

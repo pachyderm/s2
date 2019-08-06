@@ -62,7 +62,7 @@ func fixContent(object *Object) {
 
 type Object struct {
     ID        uint       `gorm:"primary_key"`
-    CreatedAt time.Time  `gorm:"index"`
+    UpdatedAt time.Time  `gorm:"index"`
     DeletedAt *time.Time `gorm:"index" jsonapi:"attr,deleted_at"`
 
     BucketID uint   `gorm:"not null"`
@@ -82,14 +82,14 @@ func GetObject(db *gorm.DB, bucketID uint, key, version string) (Object, error) 
 
 func GetLatestObject(db *gorm.DB, bucketID uint, key string) (Object, error) {
     var object Object
-    err := db.Unscoped().Order("created_at DESC").Where("bucket_id = ? AND key = ?", bucketID, key).First(&object).Error
+    err := db.Unscoped().Order("updated_at DESC").Where("bucket_id = ? AND key = ?", bucketID, key).First(&object).Error
     fixContent(&object)
     return object, err
 }
 
 func GetLatestLivingObject(db *gorm.DB, bucketID uint, key string) (Object, error) {
     var object Object
-    err := db.Order("created_at DESC").Where("bucket_id = ? AND key = ?", bucketID, key).First(&object).Error
+    err := db.Order("updated_at DESC").Where("bucket_id = ? AND key = ?", bucketID, key).First(&object).Error
     fixContent(&object)
     return object, err
 }
@@ -118,15 +118,31 @@ func ListObjects(db *gorm.DB, bucketID uint, keyMarker, versionMarker string, li
     return objects, q.Error
 }
 
-func CreateObject(db *gorm.DB, bucketID uint, key, version string, content []byte) (Object, error) {
-    object := Object{
+func UpsertObject(db *gorm.DB, bucketID uint, key, version string, content []byte) (Object, error) {
+    etag := fmt.Sprintf("%x", md5.Sum(content))
+
+    object, err := GetLatestObject(db, bucketID, key)
+    if err != nil {
+        if !gorm.IsRecordNotFoundError(err) {
+            return Object{}, err
+        }
+    } else {
+        if object.Version == version && object.DeletedAt == nil {
+            object.ETag = etag
+            object.Content = content
+            err = db.Save(&object).Error
+            return object, err
+        }
+    }
+
+    object = Object{
         BucketID: bucketID,
         Key:      key,
         Version:  version,
-        ETag:     fmt.Sprintf("%x", md5.Sum(content)),
+        ETag:     etag,
         Content:  content,
     }
-    err := db.Create(&object).Error
+    err = db.Create(&object).Error
     return object, err
 }
 
