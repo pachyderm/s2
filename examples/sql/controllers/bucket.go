@@ -3,6 +3,7 @@ package controllers
 import (
 	"net/http"
 	_ "net/http/pprof"
+	"sort"
 	"strings"
 
 	"github.com/jinzhu/gorm"
@@ -97,6 +98,11 @@ func (c *Controller) ListObjectVersions(r *http.Request, name, prefix, keyMarker
 		c.rollback(tx)
 		return
 	}
+
+	// s3tests expects the listings to be ordered by update date
+	sort.Slice(objects, func(i, j int) bool {
+		return objects[i].UpdatedAt.After(objects[j].UpdatedAt)
+	})
 
 	for _, object := range objects {
 		if !strings.HasPrefix(object.Key, prefix) || isDelimiterFiltered(object.Key, prefix, delimiter) {

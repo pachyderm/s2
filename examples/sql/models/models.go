@@ -54,6 +54,7 @@ func GetBucket(db *gorm.DB, name string) (Bucket, error) {
 
 type Object struct {
     ID        uint       `gorm:"primary_key"`
+    UpdatedAt time.Time  `gorm:"index"`
     DeletedAt *time.Time `gorm:"index" jsonapi:"attr,deleted_at"`
 
     BucketID uint   `gorm:"not null"`
