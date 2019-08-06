@@ -62,13 +62,12 @@ func fixContent(object *Object) {
 
 type Object struct {
     ID        uint       `gorm:"primary_key"`
-    UpdatedAt time.Time  `gorm:"index"`
+    CreatedAt time.Time  `gorm:"index"`
     DeletedAt *time.Time `gorm:"index" jsonapi:"attr,deleted_at"`
 
     BucketID uint   `gorm:"not null"`
     Key      string `gorm:"not null,index:idx_object_key"`
     Version  string `gorm:"index:idx_object_version"`
-    Current  bool   `gorm:"not null,index:idx_object_current"`
 
     ETag    string `gorm:"not null"`
     Content []byte `gorm:"not null"`
@@ -81,16 +80,23 @@ func GetObject(db *gorm.DB, bucketID uint, key, version string) (Object, error) 
     return object, err
 }
 
-func GetCurrentObject(db *gorm.DB, bucketID uint, key string) (Object, error) {
+func GetLatestObject(db *gorm.DB, bucketID uint, key string) (Object, error) {
     var object Object
-    err := db.Unscoped().Where("bucket_id = ? AND key = ? AND current = 1", bucketID, key).First(&object).Error
+    err := db.Unscoped().Order("created_at DESC").Where("bucket_id = ? AND key = ?", bucketID, key).First(&object).Error
     fixContent(&object)
     return object, err
 }
 
-func ListCurrentObjects(db *gorm.DB, bucketID uint, marker string, limit int) ([]Object, error) {
+func GetLatestLivingObject(db *gorm.DB, bucketID uint, key string) (Object, error) {
+    var object Object
+    err := db.Order("created_at DESC").Where("bucket_id = ? AND key = ?", bucketID, key).First(&object).Error
+    fixContent(&object)
+    return object, err
+}
+
+func ListLatestObjects(db *gorm.DB, bucketID uint, marker string, limit int) ([]Object, error) {
     var objects []Object
-    err := db.Limit(limit).Order("bucket_id, key").Where("bucket_id = ? AND key > ? AND current = 1 AND deleted_at IS NULL", bucketID, marker).Find(&objects).Error
+    err := db.Limit(limit).Order("bucket_id, key").Where("bucket_id = ? AND key > ?", bucketID, marker).Find(&objects).Error
     for _, object := range objects {
         fixContent(&object)
     }
@@ -112,45 +118,15 @@ func ListObjects(db *gorm.DB, bucketID uint, keyMarker, versionMarker string, li
     return objects, q.Error
 }
 
-func UpsertObject(db *gorm.DB, bucketID uint, key, version string, content []byte) (Object, error) {
-    etag := fmt.Sprintf("%x", md5.Sum(content))
-
-    object, err := GetCurrentObject(db, bucketID, key)
-    if err != nil {
-        if !gorm.IsRecordNotFoundError(err) {
-            return Object{}, err
-        }
-    } else {
-        if object.Version == version && object.DeletedAt == nil {
-            object.ETag = etag
-            object.Content = content
-            err = db.Save(&object).Error
-            return object, err
-        }
-
-        object.Current = false
-        err = db.Unscoped().Save(&object).Error
-        if err != nil {
-            return Object{}, err
-        }
-    }
-
-    newObject := Object{
+func CreateObject(db *gorm.DB, bucketID uint, key, version string, content []byte) (Object, error) {
+    object := Object{
         BucketID: bucketID,
-        ETag:     etag,
         Key:      key,
-        Content:  content,
         Version:  version,
-        Current:  true,
+        ETag:     fmt.Sprintf("%x", md5.Sum(content)),
+        Content:  content,
     }
-    err = db.Create(&newObject).Error
-    return newObject, err
-}
-
-func GetLatestLivingObject(db *gorm.DB, bucketID uint, key string) (Object, error) {
-    var object Object
-    err := db.Order("updated_at DESC").Where("bucket_id = ? AND key = ? AND deleted_at IS NULL", bucketID, key).First(&object).Error
-    fixContent(&object)
+    err := db.Create(&object).Error
     return object, err
 }
 

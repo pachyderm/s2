@@ -31,7 +31,10 @@ func (c *Controller) GetObject(r *http.Request, name, key, version string) (etag
 	if version != "" {
 		object, err = models.GetObject(tx, bucket.ID, key, version)
 	} else {
-		object, err = models.GetCurrentObject(tx, bucket.ID, key)
+		object, err = models.GetLatestLivingObject(tx, bucket.ID, key)
+		if gorm.IsRecordNotFoundError(err) {
+			object, err = models.GetLatestObject(tx, bucket.ID, key)
+		}
 	}
 	if err != nil {
 		c.rollback(tx)
@@ -83,7 +86,7 @@ func (c *Controller) PutObject(r *http.Request, name, key string, reader io.Read
 	}
 
 	var object models.Object
-	object, err = models.UpsertObject(tx, bucket.ID, key, version, bytes)
+	object, err = models.CreateObject(tx, bucket.ID, key, version, bytes)
 	if err != nil {
 		c.rollback(tx)
 		return
@@ -115,7 +118,7 @@ func (c *Controller) DeleteObject(r *http.Request, name, key, version string) (r
 	if version != "" {
 		object, err = models.GetObject(tx, bucket.ID, key, version)
 	} else {
-		object, err = models.GetCurrentObject(tx, bucket.ID, key)
+		object, err = models.GetLatestObject(tx, bucket.ID, key)
 	}
 	if err != nil {
 		c.rollback(tx)
@@ -123,16 +126,6 @@ func (c *Controller) DeleteObject(r *http.Request, name, key, version string) (r
 			err = s2.NoSuchKeyError(r)
 		}
 		return
-	}
-
-	moveHead := version != "" && object.Current && bucket.Versioning == s2.VersioningEnabled
-
-	if moveHead {
-		object.Current = false
-		if err = tx.Save(&object).Error; err != nil {
-			c.rollback(tx)
-			return
-		}
 	}
 
 	if object.DeletedAt != nil {
@@ -146,23 +139,6 @@ func (c *Controller) DeleteObject(r *http.Request, name, key, version string) (r
 		if err = tx.Delete(&object).Error; err != nil {
 			c.rollback(tx)
 			return
-		}
-	}
-
-	if moveHead {
-		var latestObject models.Object
-		latestObject, err = models.GetLatestLivingObject(tx, bucket.ID, key)
-		if err != nil {
-			if !gorm.IsRecordNotFoundError(err) {
-				c.rollback(tx)
-				return
-			}
-		} else {
-			latestObject.Current = true
-			if err = tx.Save(&latestObject).Error; err != nil {
-				c.rollback(tx)
-				return
-			}
 		}
 	}
 

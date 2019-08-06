@@ -33,7 +33,7 @@ func (c *Controller) ListObjects(r *http.Request, name, prefix, marker, delimite
 	}
 
 	var objects []models.Object
-	objects, err = models.ListCurrentObjects(tx, bucket.ID, marker, maxKeys+1)
+	objects, err = models.ListLatestObjects(tx, bucket.ID, marker, maxKeys+1)
 	if err != nil {
 		c.rollback(tx)
 		return
@@ -101,7 +101,7 @@ func (c *Controller) ListObjectVersions(r *http.Request, name, prefix, keyMarker
 
 	// s3tests expects the listings to be ordered by update date
 	sort.Slice(objects, func(i, j int) bool {
-		return objects[i].UpdatedAt.After(objects[j].UpdatedAt)
+		return objects[i].CreatedAt.After(objects[j].CreatedAt)
 	})
 
 	for _, object := range objects {
@@ -116,11 +116,18 @@ func (c *Controller) ListObjectVersions(r *http.Request, name, prefix, keyMarker
 			break
 		}
 
+		var latestObject models.Object
+		latestObject, err = models.GetLatestObject(tx, bucket.ID, object.Key)
+		if err != nil {
+			c.rollback(tx)
+			return
+		}
+
 		if object.DeletedAt == nil {
 			versions = append(versions, s2.Version{
 				Key:          object.Key,
 				Version:      object.Version,
-				IsLatest:     object.Current,
+				IsLatest:     latestObject.ID == object.ID,
 				LastModified: models.Epoch,
 				ETag:         object.ETag,
 				Size:         uint64(len(object.Content)),
@@ -131,7 +138,7 @@ func (c *Controller) ListObjectVersions(r *http.Request, name, prefix, keyMarker
 			deleteMarkers = append(deleteMarkers, s2.DeleteMarker{
 				Key:          object.Key,
 				Version:      object.Version,
-				IsLatest:     object.Current,
+				IsLatest:     latestObject.ID == object.ID,
 				LastModified: models.Epoch,
 				Owner:        models.GlobalUser,
 			})

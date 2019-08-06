@@ -166,7 +166,7 @@ func (c *Controller) CompleteMultipart(r *http.Request, name, key, uploadID stri
 	}
 
 	var obj models.Object
-	obj, err = models.UpsertObject(tx, bucket.ID, key, version, content)
+	obj, err = models.CreateObject(tx, bucket.ID, key, version, content)
 	if err != nil {
 		c.rollback(tx)
 		return
