@@ -86,12 +86,6 @@ func (c *Controller) ListObjectVersions(r *http.Request, name, prefix, keyMarker
 		return
 	}
 
-	// if bucket.Versioning != s2.VersioningEnabled {
-	// 	c.rollback(tx)
-	// 	err = s2.NotImplementedError(r)
-	// 	return
-	// }
-
 	var objects []models.Object
 	objects, err = models.ListObjects(tx, bucket.ID, keyMarker, versionMarker, maxKeys+1)
 	if err != nil {
