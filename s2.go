@@ -20,8 +20,11 @@ import (
 )
 
 const (
+	// awsTimeFormat specifies the time format used in AWS requests
 	awsTimeFormat = "20060102T150405Z"
-	skewTime      = 15 * time.Minute
+	// skewTime specifies the maximum delta between the current time and the
+	// time specified in the HTTP request
+	skewTime = 15 * time.Minute
 )
 
 var (

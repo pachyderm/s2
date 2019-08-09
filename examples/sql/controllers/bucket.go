@@ -11,32 +11,35 @@ import (
 	"github.com/pachyderm/s2/examples/sql/models"
 )
 
-func (c *Controller) GetLocation(r *http.Request, name string) (location string, err error) {
+func (c *Controller) GetLocation(r *http.Request, name string) (string, error) {
 	c.logger.Tracef("GetLocation: %+v", name)
 	return models.Location, nil
 }
 
 // Lists bucket contents. Note that this doesn't support common prefixes or
 // delimiters.
-func (c *Controller) ListObjects(r *http.Request, name, prefix, marker, delimiter string, maxKeys int) (contents []s2.Contents, commonPrefixes []s2.CommonPrefixes, isTruncated bool, err error) {
+func (c *Controller) ListObjects(r *http.Request, name, prefix, marker, delimiter string, maxKeys int) (*s2.ListObjectsResult, error) {
 	c.logger.Tracef("ListObjects: name=%+v, prefix=%+v, marker=%+v, delimiter=%+v, maxKeys=%+v", name, prefix, marker, delimiter, maxKeys)
 	tx := c.trans()
 
-	var bucket models.Bucket
-	bucket, err = models.GetBucket(tx, name)
+	bucket, err := models.GetBucket(tx, name)
 	if err != nil {
 		c.rollback(tx)
 		if gorm.IsRecordNotFoundError(err) {
-			err = s2.NoSuchBucketError(r)
+			return nil, s2.NoSuchBucketError(r)
 		}
-		return
+		return nil, err
 	}
 
-	var objects []models.Object
-	objects, err = models.ListLatestObjects(tx, bucket.ID, marker, maxKeys+1)
+	objects, err := models.ListLatestObjects(tx, bucket.ID, marker, maxKeys+1)
 	if err != nil {
 		c.rollback(tx)
-		return
+		return nil, err
+	}
+
+	result := s2.ListObjectsResult{
+		Contents:       []s2.Contents{},
+		CommonPrefixes: []s2.CommonPrefixes{},
 	}
 
 	for _, object := range objects {
@@ -51,14 +54,14 @@ func (c *Controller) ListObjects(r *http.Request, name, prefix, marker, delimite
 			}
 		}
 
-		if len(contents)+len(commonPrefixes) >= maxKeys {
+		if len(result.Contents)+len(result.CommonPrefixes) >= maxKeys {
 			if maxKeys > 0 {
-				isTruncated = true
+				result.IsTruncated = true
 			}
 			break
 		}
 
-		contents = append(contents, s2.Contents{
+		result.Contents = append(result.Contents, s2.Contents{
 			Key:          object.Key,
 			LastModified: models.Epoch,
 			ETag:         object.ETag,
@@ -69,28 +72,26 @@ func (c *Controller) ListObjects(r *http.Request, name, prefix, marker, delimite
 	}
 
 	c.commit(tx)
-	return
+	return &result, nil
 }
 
-func (c *Controller) ListObjectVersions(r *http.Request, name, prefix, keyMarker, versionMarker string, delimiter string, maxKeys int) (versions []s2.Version, deleteMarkers []s2.DeleteMarker, isTruncated bool, err error) {
+func (c *Controller) ListObjectVersions(r *http.Request, name, prefix, keyMarker, versionMarker string, delimiter string, maxKeys int) (*s2.ListObjectVersionsResult, error) {
 	c.logger.Tracef("ListObjectVersions: name=%+v, prefix=%+v, keyMarker=%+v, versionMarker=%+v, delimiter=%+v, maxKeys=%+v", name, prefix, keyMarker, versionMarker, delimiter, maxKeys)
 	tx := c.trans()
 
-	var bucket models.Bucket
-	bucket, err = models.GetBucket(tx, name)
+	bucket, err := models.GetBucket(tx, name)
 	if err != nil {
 		c.rollback(tx)
 		if gorm.IsRecordNotFoundError(err) {
-			err = s2.NoSuchBucketError(r)
+			return nil, s2.NoSuchBucketError(r)
 		}
-		return
+		return nil, err
 	}
 
-	var objects []models.Object
-	objects, err = models.ListObjects(tx, bucket.ID, keyMarker, versionMarker, maxKeys+1)
+	objects, err := models.ListObjects(tx, bucket.ID, keyMarker, versionMarker, maxKeys+1)
 	if err != nil {
 		c.rollback(tx)
-		return
+		return nil, err
 	}
 
 	// s3tests expects the listings to be ordered by update date
@@ -98,27 +99,31 @@ func (c *Controller) ListObjectVersions(r *http.Request, name, prefix, keyMarker
 		return objects[i].UpdatedAt.After(objects[j].UpdatedAt)
 	})
 
+	result := s2.ListObjectVersionsResult{
+		Versions:      []s2.Version{},
+		DeleteMarkers: []s2.DeleteMarker{},
+	}
+
 	for _, object := range objects {
 		if !strings.HasPrefix(object.Key, prefix) || isDelimiterFiltered(object.Key, prefix, delimiter) {
 			continue
 		}
 
-		if len(versions)+len(deleteMarkers) >= maxKeys {
+		if len(result.Versions)+len(result.DeleteMarkers) >= maxKeys {
 			if maxKeys > 0 {
-				isTruncated = true
+				result.IsTruncated = true
 			}
 			break
 		}
 
-		var latestObject models.Object
-		latestObject, err = models.GetLatestObject(tx, bucket.ID, object.Key)
+		latestObject, err := models.GetLatestObject(tx, bucket.ID, object.Key)
 		if err != nil {
 			c.rollback(tx)
-			return
+			return nil, err
 		}
 
 		if object.DeletedAt == nil {
-			versions = append(versions, s2.Version{
+			result.Versions = append(result.Versions, s2.Version{
 				Key:          object.Key,
 				Version:      object.Version,
 				IsLatest:     latestObject.ID == object.ID,
@@ -129,7 +134,7 @@ func (c *Controller) ListObjectVersions(r *http.Request, name, prefix, keyMarker
 				Owner:        models.GlobalUser,
 			})
 		} else {
-			deleteMarkers = append(deleteMarkers, s2.DeleteMarker{
+			result.DeleteMarkers = append(result.DeleteMarkers, s2.DeleteMarker{
 				Key:          object.Key,
 				Version:      object.Version,
 				IsLatest:     latestObject.ID == object.ID,
@@ -140,34 +145,33 @@ func (c *Controller) ListObjectVersions(r *http.Request, name, prefix, keyMarker
 	}
 
 	c.commit(tx)
-	return
+	return &result, nil
 }
 
-func (c *Controller) CreateBucket(r *http.Request, name string) (err error) {
+func (c *Controller) CreateBucket(r *http.Request, name string) error {
 	c.logger.Tracef("CreateBucket: %+v", name)
 	tx := c.trans()
 
-	_, err = models.GetBucket(tx, name)
+	_, err := models.GetBucket(tx, name)
 	if err == nil {
 		c.rollback(tx)
-		err = s2.BucketAlreadyOwnedByYouError(r)
-		return
+		return s2.BucketAlreadyOwnedByYouError(r)
 	} else if !gorm.IsRecordNotFoundError(err) {
 		c.rollback(tx)
-		return
+		return err
 	}
 
 	_, err = models.CreateBucket(tx, name)
 	if err != nil {
 		c.rollback(tx)
-		return
+		return err
 	}
 
 	c.commit(tx)
-	return
+	return nil
 }
 
-func (c *Controller) DeleteBucket(r *http.Request, name string) (err error) {
+func (c *Controller) DeleteBucket(r *http.Request, name string) error {
 	c.logger.Tracef("DeleteBucket: %+v", name)
 	tx := c.trans()
 
@@ -175,33 +179,32 @@ func (c *Controller) DeleteBucket(r *http.Request, name string) (err error) {
 	if err != nil {
 		c.rollback(tx)
 		if gorm.IsRecordNotFoundError(err) {
-			err = s2.NoSuchBucketError(r)
+			return s2.NoSuchBucketError(r)
 		}
-		return
+		return err
 	}
 
 	err = tx.Delete(bucket).Error
 	if err != nil {
 		c.rollback(tx)
-		return
+		return err
 	}
 
 	c.commit(tx)
-	return
+	return nil
 }
 
-func (c *Controller) GetBucketVersioning(r *http.Request, name string) (status string, err error) {
+func (c *Controller) GetBucketVersioning(r *http.Request, name string) (string, error) {
 	c.logger.Tracef("GetBucketVersioning: %+v", name)
 	tx := c.trans()
 
-	var bucket models.Bucket
-	bucket, err = models.GetBucket(tx, name)
+	bucket, err := models.GetBucket(tx, name)
 	if err != nil {
 		c.rollback(tx)
 		if gorm.IsRecordNotFoundError(err) {
-			err = s2.NoSuchBucketError(r)
+			return "", s2.NoSuchBucketError(r)
 		}
-		return
+		return "", err
 	}
 
 	c.commit(tx)

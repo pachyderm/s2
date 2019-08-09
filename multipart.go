@@ -37,30 +37,49 @@ type Part struct {
 	ETag       string `xml:"ETag"`
 }
 
+type ListMultipartResult struct {
+	IsTruncated bool
+	Uploads     []Upload
+}
+
+type CompleteMultipartResult struct {
+	Location string
+	ETag     string
+	Version  string
+}
+
+type ListMultipartChunksResult struct {
+	Initiator    *User
+	Owner        *User
+	StorageClass string
+	IsTruncated  bool
+	Parts        []Part
+}
+
 // MultipartController is an interface that specifies multipart-related
 // functionality
 type MultipartController interface {
 	// ListMultipart lists in-progress multipart uploads in a bucket
-	ListMultipart(r *http.Request, bucket, keyMarker, uploadIDMarker string, maxUploads int) (isTruncated bool, uploads []Upload, err error)
+	ListMultipart(r *http.Request, bucket, keyMarker, uploadIDMarker string, maxUploads int) (*ListMultipartResult, error)
 	// InitMultipart initializes a new multipart upload
-	InitMultipart(r *http.Request, bucket, key string) (uploadID string, err error)
+	InitMultipart(r *http.Request, bucket, key string) (string, error)
 	// AbortMultipart aborts an in-progress multipart upload
 	AbortMultipart(r *http.Request, bucket, key, uploadID string) error
 	// CompleteMultipart finishes a multipart upload
-	CompleteMultipart(r *http.Request, bucket, key, uploadID string, parts []Part) (location, etag, createdVersion string, err error)
+	CompleteMultipart(r *http.Request, bucket, key, uploadID string, parts []Part) (*CompleteMultipartResult, error)
 	// ListMultipartChunks lists the constituent chunks of an in-progress
 	// multipart upload
-	ListMultipartChunks(r *http.Request, bucket, key, uploadID string, partNumberMarker, maxParts int) (initiator, owner *User, storageClass string, isTruncated bool, parts []Part, err error)
+	ListMultipartChunks(r *http.Request, bucket, key, uploadID string, partNumberMarker, maxParts int) (*ListMultipartChunksResult, error)
 	// UploadMultipartChunk uploads a chunk of an in-progress multipart upload
-	UploadMultipartChunk(r *http.Request, bucket, key, uploadID string, partNumber int, reader io.Reader) (etag string, err error)
+	UploadMultipartChunk(r *http.Request, bucket, key, uploadID string, partNumber int, reader io.Reader) (string, error)
 }
 
 // unimplementedMultipartController defines a controller that returns
 // `NotImplementedError` for all functionality
 type unimplementedMultipartController struct{}
 
-func (c unimplementedMultipartController) ListMultipart(r *http.Request, bucket, keyMarker, uploadIDMarker string, maxUploads int) (isTruncated bool, uploads []Upload, err error) {
-	return false, nil, NotImplementedError(r)
+func (c unimplementedMultipartController) ListMultipart(r *http.Request, bucket, keyMarker, uploadIDMarker string, maxUploads int) (*ListMultipartResult, error) {
+	return nil, NotImplementedError(r)
 }
 
 func (c unimplementedMultipartController) InitMultipart(r *http.Request, bucket, key string) (string, error) {
@@ -71,15 +90,15 @@ func (c unimplementedMultipartController) AbortMultipart(r *http.Request, bucket
 	return NotImplementedError(r)
 }
 
-func (c unimplementedMultipartController) CompleteMultipart(r *http.Request, bucket, key, uploadID string, parts []Part) (location, etag, createdVersion string, err error) {
-	return "", "", "", NotImplementedError(r)
+func (c unimplementedMultipartController) CompleteMultipart(r *http.Request, bucket, key, uploadID string, parts []Part) (*CompleteMultipartResult, error) {
+	return nil, NotImplementedError(r)
 }
 
-func (c unimplementedMultipartController) ListMultipartChunks(r *http.Request, bucket, key, uploadID string, partNumberMarker, maxcParts int) (initiator, owner *User, storageClass string, isTruncated bool, parts []Part, err error) {
-	return nil, nil, "", false, nil, NotImplementedError(r)
+func (c unimplementedMultipartController) ListMultipartChunks(r *http.Request, bucket, key, uploadID string, partNumberMarker, maxcParts int) (*ListMultipartChunksResult, error) {
+	return nil, NotImplementedError(r)
 }
 
-func (c unimplementedMultipartController) UploadMultipartChunk(r *http.Request, bucket, key, uploadID string, partNumber int, reader io.Reader) (etag string, err error) {
+func (c unimplementedMultipartController) UploadMultipartChunk(r *http.Request, bucket, key, uploadID string, partNumber int, reader io.Reader) (string, error) {
 	return "", NotImplementedError(r)
 }
 
@@ -104,13 +123,13 @@ func (h *multipartHandler) list(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	isTruncated, uploads, err := h.controller.ListMultipart(r, bucket, keyMarker, uploadIDMarker, maxUploads)
+	result, err := h.controller.ListMultipart(r, bucket, keyMarker, uploadIDMarker, maxUploads)
 	if err != nil {
 		WriteError(h.logger, w, r, err)
 		return
 	}
 
-	result := struct {
+	marshallable := struct {
 		XMLName            xml.Name `xml:"ListMultipartUploadsResult"`
 		Bucket             string   `xml:"Bucket"`
 		KeyMarker          string   `xml:"KeyMarker"`
@@ -125,15 +144,15 @@ func (h *multipartHandler) list(w http.ResponseWriter, r *http.Request) {
 		KeyMarker:      keyMarker,
 		UploadIDMarker: uploadIDMarker,
 		MaxUploads:     maxUploads,
-		IsTruncated:    isTruncated,
-		Uploads:        uploads,
+		IsTruncated:    result.IsTruncated,
+		Uploads:        result.Uploads,
 	}
 
-	if result.IsTruncated {
+	if marshallable.IsTruncated {
 		highKey := ""
 		highUploadID := ""
 
-		for _, upload := range result.Uploads {
+		for _, upload := range marshallable.Uploads {
 			if upload.Key > highKey {
 				highKey = upload.Key
 			}
@@ -142,11 +161,11 @@ func (h *multipartHandler) list(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		result.NextKeyMarker = highKey
-		result.NextUploadIDMarker = highUploadID
+		marshallable.NextKeyMarker = highKey
+		marshallable.NextUploadIDMarker = highUploadID
 	}
 
-	writeXML(h.logger, w, r, http.StatusOK, result)
+	writeXML(h.logger, w, r, http.StatusOK, marshallable)
 }
 
 func (h *multipartHandler) listChunks(w http.ResponseWriter, r *http.Request) {
@@ -168,13 +187,13 @@ func (h *multipartHandler) listChunks(w http.ResponseWriter, r *http.Request) {
 
 	uploadID := r.FormValue("uploadId")
 
-	initiator, owner, storageClass, isTruncated, parts, err := h.controller.ListMultipartChunks(r, bucket, key, uploadID, partNumberMarker, maxParts)
+	result, err := h.controller.ListMultipartChunks(r, bucket, key, uploadID, partNumberMarker, maxParts)
 	if err != nil {
 		WriteError(h.logger, w, r, err)
 		return
 	}
 
-	result := struct {
+	marshallable := struct {
 		XMLName              xml.Name `xml:"ListPartsResult"`
 		Bucket               string   `xml:"Bucket"`
 		Key                  string   `xml:"Key"`
@@ -193,26 +212,26 @@ func (h *multipartHandler) listChunks(w http.ResponseWriter, r *http.Request) {
 		UploadID:         uploadID,
 		PartNumberMarker: partNumberMarker,
 		MaxParts:         maxParts,
-		Initiator:        initiator,
-		Owner:            owner,
-		StorageClass:     storageClass,
-		IsTruncated:      isTruncated,
-		Parts:            parts,
+		Initiator:        result.Initiator,
+		Owner:            result.Owner,
+		StorageClass:     result.StorageClass,
+		IsTruncated:      result.IsTruncated,
+		Parts:            result.Parts,
 	}
 
-	if result.IsTruncated {
+	if marshallable.IsTruncated {
 		high := 0
 
-		for _, part := range result.Parts {
+		for _, part := range marshallable.Parts {
 			if part.PartNumber > high {
 				high = part.PartNumber
 			}
 		}
 
-		result.NextPartNumberMarker = high
+		marshallable.NextPartNumberMarker = high
 	}
 
-	writeXML(h.logger, w, r, http.StatusOK, result)
+	writeXML(h.logger, w, r, http.StatusOK, marshallable)
 }
 
 func (h *multipartHandler) init(w http.ResponseWriter, r *http.Request) {
@@ -226,7 +245,7 @@ func (h *multipartHandler) init(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := struct {
+	marshallable := struct {
 		XMLName  xml.Name `xml:"InitiateMultipartUploadResult"`
 		Bucket   string   `xml:"Bucket"`
 		Key      string   `xml:"Key"`
@@ -237,7 +256,7 @@ func (h *multipartHandler) init(w http.ResponseWriter, r *http.Request) {
 		UploadID: uploadID,
 	}
 
-	writeXML(h.logger, w, r, http.StatusOK, result)
+	writeXML(h.logger, w, r, http.StatusOK, marshallable)
 }
 
 func (h *multipartHandler) complete(w http.ResponseWriter, r *http.Request) {
@@ -275,24 +294,18 @@ func (h *multipartHandler) complete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ch := make(chan struct {
-		location string
-		etag     string
-		version  string
-		err      error
+		result *CompleteMultipartResult
+		err    error
 	})
 
 	go func() {
-		location, etag, createdVersion, err := h.controller.CompleteMultipart(r, bucket, key, uploadID, payload.Parts)
+		result, err := h.controller.CompleteMultipart(r, bucket, key, uploadID, payload.Parts)
 		ch <- struct {
-			location string
-			etag     string
-			version  string
-			err      error
+			result *CompleteMultipartResult
+			err    error
 		}{
-			location: location,
-			etag:     etag,
-			version:  createdVersion,
-			err:      err,
+			result: result,
+			err:    err,
 		}
 	}()
 
@@ -317,7 +330,7 @@ func (h *multipartHandler) complete(w http.ResponseWriter, r *http.Request) {
 					WriteError(h.logger, w, r, s3Error)
 				}
 			} else {
-				result := struct {
+				marshallable := struct {
 					XMLName  xml.Name `xml:"CompleteMultipartUploadResult"`
 					Location string   `xml:"Location"`
 					Bucket   string   `xml:"Bucket"`
@@ -326,18 +339,18 @@ func (h *multipartHandler) complete(w http.ResponseWriter, r *http.Request) {
 				}{
 					Bucket:   bucket,
 					Key:      key,
-					Location: value.location,
-					ETag:     addETagQuotes(value.etag),
+					Location: value.result.Location,
+					ETag:     addETagQuotes(value.result.ETag),
 				}
 
-				if value.version != "" {
-					w.Header().Set("x-amz-version-id", value.version)
+				if value.result.Version != "" {
+					w.Header().Set("x-amz-version-id", value.result.Version)
 				}
 
 				if streaming {
-					writeXMLBody(h.logger, w, result)
+					writeXMLBody(h.logger, w, marshallable)
 				} else {
-					writeXML(h.logger, w, r, http.StatusOK, result)
+					writeXML(h.logger, w, r, http.StatusOK, marshallable)
 				}
 			}
 			return

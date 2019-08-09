@@ -7,24 +7,29 @@ import (
 	"github.com/pachyderm/s2/examples/sql/models"
 )
 
-func (c *Controller) ListBuckets(r *http.Request) (owner *s2.User, buckets []s2.Bucket, err error) {
+func (c *Controller) ListBuckets(r *http.Request) (*s2.ListBucketsResult, error) {
 	c.logger.Tracef("ListBuckets")
 	tx := c.trans()
 
-	var dbBuckets []*models.Bucket
-	if err = tx.Find(&dbBuckets).Error; err != nil {
+	var buckets []*models.Bucket
+	if err := tx.Find(&buckets).Error; err != nil {
 		c.rollback(tx)
-		return
+		return nil, err
 	}
 
-	for _, bucket := range dbBuckets {
-		buckets = append(buckets, s2.Bucket{
+	result := s2.ListBucketsResult{
+		Owner:   &models.GlobalUser,
+		Buckets: []s2.Bucket{},
+	}
+
+	for _, bucket := range buckets {
+		result.Buckets = append(result.Buckets, s2.Bucket{
 			Name:         bucket.Name,
 			CreationDate: models.Epoch,
 		})
 	}
 
-	owner = &models.GlobalUser
+	result.Owner = &models.GlobalUser
 	c.commit(tx)
-	return
+	return &result, nil
 }
