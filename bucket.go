@@ -10,63 +10,100 @@ import (
 )
 
 const (
+	// defaultMaxKeys specifies the maximum number of keys returned in object
+	// listings by default
 	defaultMaxKeys int = 1000
-
-	VersioningDisabled  string = ""
+	// VersioningDisabled specifies that versioning is not enabled on a bucket
+	VersioningDisabled string = ""
+	// VersioningDisabled specifies that versioning is suspended on a bucket
 	VersioningSuspended string = "Suspended"
-	VersioningEnabled   string = "Enabled"
+	// VersioningDisabled specifies that versioning is enabled on a bucket
+	VersioningEnabled string = "Enabled"
 )
 
 // Contents is an individual file/object
 type Contents struct {
-	Key          string    `xml:"Key"`
+	// Key specifies the object key
+	Key string `xml:"Key"`
+	// LastModified specifies when the object was last modified
 	LastModified time.Time `xml:"LastModified"`
-	ETag         string    `xml:"ETag"`
-	Size         uint64    `xml:"Size"`
-	StorageClass string    `xml:"StorageClass"`
-	Owner        User      `xml:"Owner"`
+	// ETag is a hex encoding of the hash of the object contents, with or
+	// without surrounding quotes.
+	ETag string `xml:"ETag"`
+	// Size specifies the size of the object
+	Size uint64 `xml:"Size"`
+	// StorageClass specifies the storage class used for the object
+	StorageClass string `xml:"StorageClass"`
+	// Owner specifies the owner of the object
+	Owner User `xml:"Owner"`
 }
 
 // CommonPrefixes specifies a common prefix of S3 keys. This is akin to a
 // directory.
 type CommonPrefixes struct {
+	// Prefix specifies the common prefix value.
 	Prefix string `xml:"Prefix"`
-	Owner  User   `xml:"Owner"`
+	// Owner specifies the owner of the object
+	Owner User `xml:"Owner"`
 }
 
 // DeleteMarker specifies an object that has been deleted from a
 // versioning-enabled bucket.
 type DeleteMarker struct {
-	Key          string    `xml:"Key"`
-	Version      string    `xml:"VersionId"`
-	IsLatest     bool      `xml:"IsLatest"`
+	// Key specifies the object key
+	Key string `xml:"Key"`
+	// Version is the version of the object, or an empty string if versioning
+	// is not enabled or supported.
+	Version string `xml:"VersionId"`
+	// IsLatest specifies whether this is the latest version of the object.
+	IsLatest bool `xml:"IsLatest"`
+	// LastModified specifies when the object was last modified
 	LastModified time.Time `xml:"LastModified"`
-	Owner        User      `xml:"Owner"`
+	// Owner specifies the owner of the object
+	Owner User `xml:"Owner"`
 }
 
 // Version specifies a specific version of an object in a
 // versioning-enabled bucket.
 type Version struct {
-	Key          string    `xml:"Key"`
-	Version      string    `xml:"VersionId"`
-	IsLatest     bool      `xml:"IsLatest"`
+	// Key specifies the object key
+	Key string `xml:"Key"`
+	// Version is the version of the object, or an empty string if versioning
+	// is not enabled or supported.
+	Version string `xml:"VersionId"`
+	// IsLatest specifies whether this is the latest version of the object.
+	IsLatest bool `xml:"IsLatest"`
+	// LastModified specifies when the object was last modified
 	LastModified time.Time `xml:"LastModified"`
-	ETag         string    `xml:"ETag"`
-	Size         uint64    `xml:"Size"`
-	StorageClass string    `xml:"StorageClass"`
-	Owner        User      `xml:"Owner"`
+	// ETag is a hex encoding of the hash of the object contents, with or
+	// without surrounding quotes.
+	ETag string `xml:"ETag"`
+	// Size specifies the size of the object
+	Size uint64 `xml:"Size"`
+	// StorageClass specifies the storage class used for the object
+	StorageClass string `xml:"StorageClass"`
+	// Owner specifies the owner of the object
+	Owner User `xml:"Owner"`
 }
 
+// ListObjectsResult is a response from a ListObjects call
 type ListObjectsResult struct {
-	Contents       []Contents
+	// Contents are the list of objects returned
+	Contents []Contents
+	// CommonPrefixes are the list of common prefixes returned
 	CommonPrefixes []CommonPrefixes
-	IsTruncated    bool
+	// IsTruncated specifies whether this is the end of the list or not
+	IsTruncated bool
 }
 
+// ListObjectVersionsResult is a response from a ListObjectVersions call
 type ListObjectVersionsResult struct {
-	Versions      []Version
+	// Versions are the list of versions returned
+	Versions []Version
+	// DeleteMarkers are the list of delete markers returned
 	DeleteMarkers []DeleteMarker
-	IsTruncated   bool
+	// IsTruncated specifies whether this is the end of the list or not
+	IsTruncated bool
 }
 
 // BucketController is an interface that specifies bucket-level functionality.

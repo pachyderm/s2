@@ -13,47 +13,80 @@ import (
 )
 
 const (
-	defaultMaxUploads     = 1000
-	defaultMaxParts       = 1000
-	maxPartsAllowed       = 10000
+	// defaultMaxUploads specifies the maximum number of uploads returned in
+	// multipart upload listings by default
+	defaultMaxUploads = 1000
+	// defaultMaxParts specifies the maximum number of parts returned in
+	// multipart upload part listings by default
+	defaultMaxParts = 1000
+	// maxPartsAllowed specifies the maximum number of parts that can be
+	// uploaded in a multipart upload
+	maxPartsAllowed = 10000
+	// completeMultipartPing is how long to wait before sending whitespace in
+	// a complete multipart response (to ensure the connection doesn't close.)
 	completeMultipartPing = 10 * time.Second
 )
 
-// Upload is an XML marshalable representation of an in-progress multipart
+// Upload is an XML marshallable representation of an in-progress multipart
 // upload
 type Upload struct {
-	Key          string    `xml:"Key"`
-	UploadID     string    `xml:"UploadId"`
-	Initiator    User      `xml:"Initiator"`
-	Owner        User      `xml:"Owner"`
-	StorageClass string    `xml:"StorageClass"`
-	Initiated    time.Time `xml:"Initiated"`
+	// Key specifies the object key
+	Key string `xml:"Key"`
+	// UploadID is an ID identifying the multipart upload
+	UploadID string `xml:"UploadId"`
+	// Initiator is the user that initiated the multipart upload
+	Initiator User `xml:"Initiator"`
+	// Owner specifies the owner of the object
+	Owner User `xml:"Owner"`
+	// StorageClass specifies the storage class used for the object
+	StorageClass string `xml:"StorageClass"`
+	// Initiated is a timestamp specifying when the multipart upload was
+	// started
+	Initiated time.Time `xml:"Initiated"`
 }
 
-// Part is an XML marshalable representation of a chunk of an in-progress
+// Part is an XML marshallable representation of a chunk of an in-progress
 // multipart upload
 type Part struct {
-	PartNumber int    `xml:"PartNumber"`
-	ETag       string `xml:"ETag"`
+	// PartNumber is the index of the part
+	PartNumber int `xml:"PartNumber"`
+	// ETag is a hex encoding of the hash of the object contents, with or
+	// without surrounding quotes.
+	ETag string `xml:"ETag"`
 }
 
+// ListMultipartResult is a response from a ListMultipart call
 type ListMultipartResult struct {
+	// IsTruncated specifies whether this is the end of the list or not
 	IsTruncated bool
-	Uploads     []Upload
+	// Uploads are the list of uploads returned
+	Uploads []Upload
 }
 
+// CompleteMultipartResult is a response from a CompleteMultipart call
 type CompleteMultipartResult struct {
+	// Location is the location of the newly uploaded object
 	Location string
-	ETag     string
-	Version  string
+	// ETag is a hex encoding of the hash of the object contents, with or
+	// without surrounding quotes.
+	ETag string
+	// Version is the version of the object, or an empty string if versioning
+	// is not enabled or supported.
+	Version string
 }
 
+// ListMultipartChunksResult is a response from a ListMultipartChunks call
 type ListMultipartChunksResult struct {
-	Initiator    *User
-	Owner        *User
+	// Initiator is the user that initiated the multipart upload
+	Initiator *User
+	// Owner specifies the owner of the object
+	Owner *User
+	// StorageClass specifies the storage class used for the object
 	StorageClass string
-	IsTruncated  bool
-	Parts        []Part
+	// IsTruncated specifies whether this is the end of the list or not
+	IsTruncated bool
+	// Parts are the list of parts returned
+	Parts []Part
 }
 
 // MultipartController is an interface that specifies multipart-related

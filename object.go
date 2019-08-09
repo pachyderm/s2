@@ -11,20 +11,38 @@ import (
 
 // GetObjectResult is a response from a GetObject call
 type GetObjectResult struct {
-	ETag         string
-	Version      string
+	// ETag is a hex encoding of the hash of the object contents, with or
+	// without surrounding quotes.
+	ETag string
+	// Version is the version of the object, or an empty string if versioning
+	// is not enabled or supported.
+	Version string
+	// DeleteMarker specifies whether there's a delete marker in place of the
+	// object.
 	DeleteMarker bool
-	ModTime      time.Time
-	Content      io.ReadSeeker
+	// ModTime specifies when the object was modified.
+	ModTime time.Time
+	// Content is the contents of the object.
+	Content io.ReadSeeker
 }
 
+// PutObjectResult is a response from a PutObject call
 type PutObjectResult struct {
-	ETag    string
+	// ETag is a hex encoding of the hash of the object contents, with or
+	// without surrounding quotes.
+	ETag string
+	// Version is the version of the object, or an empty string if versioning
+	// is not enabled or supported.
 	Version string
 }
 
+// DeleteObjectResult is a response from a DeleteObject call
 type DeleteObjectResult struct {
-	Version      string
+	// Version is the version of the object, or an empty string if versioning
+	// is not enabled or supported.
+	Version string
+	// DeleteMarker specifies whether there's a delete marker in place of the
+	// object.
 	DeleteMarker bool
 }
 
