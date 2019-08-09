@@ -5,23 +5,37 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/jinzhu/gorm"
+	_ "github.com/jinzhu/gorm/dialects/sqlite"
 	"github.com/pachyderm/s2"
-	"github.com/pachyderm/s2/example/controllers"
-	"github.com/pachyderm/s2/example/models"
+	"github.com/pachyderm/s2/examples/sql/controllers"
+	"github.com/pachyderm/s2/examples/sql/models"
 	"github.com/sirupsen/logrus"
 )
 
 func main() {
-	db := models.NewStorage()
+	db, err := gorm.Open("sqlite3", ":memory:")
+	if err != nil {
+		panic(err)
+	}
+	defer db.Close()
+
+	// dbLogger := logrus.WithFields(logrus.Fields{
+	// 	"source": "gorm",
+	// }).Writer()
+	// defer dbLogger.Close()
+	// db.LogMode(true)
+	//db.SetLogger(stdlog.New(dbLogger, "", 0))
+
+	models.Init(db)
 
 	logrus.SetLevel(logrus.TraceLevel)
 	logger := logrus.WithFields(logrus.Fields{
 		"source": "s2-example",
 	})
 
-	controller := controllers.NewController(db, logger)
-
 	s3 := s2.NewS2(logger, 0, 5*time.Second)
+	controller := controllers.NewController(logger, db)
 	s3.Auth = controller
 	s3.Service = controller
 	s3.Bucket = controller
