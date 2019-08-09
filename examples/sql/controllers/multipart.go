@@ -13,195 +13,170 @@ import (
 
 func (c *Controller) ListMultipart(r *http.Request, name, keyMarker, uploadIDMarker string, maxUploads int) (*s2.ListMultipartResult, error) {
 	c.logger.Tracef("ListMultipart: name=%+v, keyMarker=%+v, uploadIDMarker=%+v, maxUploads=%+v", name, keyMarker, uploadIDMarker, maxUploads)
-	tx := c.trans()
-
-	bucket, err := models.GetBucket(tx, name)
-	if err != nil {
-		c.rollback(tx)
-		if gorm.IsRecordNotFoundError(err) {
-			return nil, s2.NoSuchBucketError(r)
-		}
-		return nil, err
-	}
-
-	uploads, err := models.ListUploads(tx, bucket.ID, keyMarker, uploadIDMarker, maxUploads+1)
-	if err != nil {
-		c.rollback(tx)
-		return nil, err
-	}
 
 	result := s2.ListMultipartResult{
 		Uploads: []s2.Upload{},
 	}
 
-	for _, upload := range uploads {
-		if len(result.Uploads) >= maxUploads {
-			if maxUploads > 0 {
-				result.IsTruncated = true
+	err := c.transaction(func(tx *gorm.DB) error {
+		bucket, err := models.GetBucket(tx, name)
+		if err != nil {
+			if gorm.IsRecordNotFoundError(err) {
+				return s2.NoSuchBucketError(r)
 			}
-			break
+			return err
 		}
 
-		result.Uploads = append(result.Uploads, s2.Upload{
-			Key:          upload.Key,
-			UploadID:     upload.ID,
-			Initiator:    models.GlobalUser,
-			StorageClass: models.StorageClass,
-			Initiated:    models.Epoch,
-		})
-	}
+		uploads, err := models.ListUploads(tx, bucket.ID, keyMarker, uploadIDMarker, maxUploads+1)
+		if err != nil {
+			return err
+		}
 
-	c.commit(tx)
-	return &result, nil
+		for _, upload := range uploads {
+			if len(result.Uploads) >= maxUploads {
+				if maxUploads > 0 {
+					result.IsTruncated = true
+				}
+				break
+			}
+
+			result.Uploads = append(result.Uploads, s2.Upload{
+				Key:          upload.Key,
+				UploadID:     upload.ID,
+				Initiator:    models.GlobalUser,
+				StorageClass: models.StorageClass,
+				Initiated:    models.Epoch,
+			})
+		}
+
+		return nil
+	})
+
+	return &result, err
 }
 
 func (c *Controller) InitMultipart(r *http.Request, name, key string) (string, error) {
 	c.logger.Tracef("InitMultipart: name=%+v, key=%+v", name, key)
-	tx := c.trans()
 
-	bucket, err := models.GetBucket(tx, name)
-	if err != nil {
-		c.rollback(tx)
-		if gorm.IsRecordNotFoundError(err) {
-			return "", s2.NoSuchBucketError(r)
+	result := ""
+
+	err := c.transaction(func(tx *gorm.DB) error {
+		bucket, err := models.GetBucket(tx, name)
+		if err != nil {
+			if gorm.IsRecordNotFoundError(err) {
+				return s2.NoSuchBucketError(r)
+			}
+			return err
 		}
-		return "", err
-	}
 
-	upload, err := models.CreateUpload(tx, bucket.ID, key)
-	if err != nil {
-		c.rollback(tx)
-		return "", err
-	}
+		upload, err := models.CreateUpload(tx, bucket.ID, key)
+		if err != nil {
+			return err
+		}
 
-	c.commit(tx)
-	return upload.ID, nil
+		result = upload.ID
+		return nil
+	})
+
+	return result, err
 }
 
 func (c *Controller) AbortMultipart(r *http.Request, name, key, uploadID string) error {
 	c.logger.Tracef("AbortMultipart: name=%+v, key=%+v, uploadID=%+v", name, key, uploadID)
-	tx := c.trans()
 
-	bucket, err := models.GetBucket(tx, name)
-	if err != nil {
-		c.rollback(tx)
-		if gorm.IsRecordNotFoundError(err) {
-			return s2.NoSuchBucketError(r)
+	return c.transaction(func(tx *gorm.DB) error {
+		bucket, err := models.GetBucket(tx, name)
+		if err != nil {
+			if gorm.IsRecordNotFoundError(err) {
+				return s2.NoSuchBucketError(r)
+			}
+			return err
 		}
-		return err
-	}
 
-	_, err = models.GetUpload(tx, bucket.ID, key, uploadID)
-	if err != nil {
-		c.rollback(tx)
-		if gorm.IsRecordNotFoundError(err) {
-			return s2.NoSuchUploadError(r)
+		_, err = models.GetUpload(tx, bucket.ID, key, uploadID)
+		if err != nil {
+			if gorm.IsRecordNotFoundError(err) {
+				return s2.NoSuchUploadError(r)
+			}
+			return err
 		}
-		return err
-	}
 
-	err = models.DeleteUpload(tx, bucket.ID, key, uploadID)
-	if err != nil {
-		c.rollback(tx)
-		return err
-	}
-
-	c.commit(tx)
-	return nil
+		return models.DeleteUpload(tx, bucket.ID, key, uploadID)
+	})
 }
 
 func (c *Controller) CompleteMultipart(r *http.Request, name, key, uploadID string, parts []s2.Part) (*s2.CompleteMultipartResult, error) {
 	c.logger.Tracef("CompleteMultipart: name=%+v, key=%+v, uploadID=%+v, parts=%+v", name, key, uploadID, parts)
-	tx := c.trans()
-
-	bucket, err := models.GetBucket(tx, name)
-	if err != nil {
-		c.rollback(tx)
-		if gorm.IsRecordNotFoundError(err) {
-			return nil, s2.NoSuchBucketError(r)
-		}
-		return nil, err
-	}
-
-	_, err = models.GetUpload(tx, bucket.ID, key, uploadID)
-	if err != nil {
-		c.rollback(tx)
-		if gorm.IsRecordNotFoundError(err) {
-			return nil, s2.NoSuchUploadError(r)
-		}
-		return nil, err
-	}
-
-	content := []byte{}
-
-	for i, part := range parts {
-		uploadPart, err := models.GetUploadPart(tx, uploadID, part.PartNumber)
-		if err != nil {
-			c.rollback(tx)
-			if gorm.IsRecordNotFoundError(err) {
-				return nil, s2.InvalidPartError(r)
-			}
-			return nil, err
-		}
-		if uploadPart.ETag != part.ETag {
-			c.rollback(tx)
-			return nil, s2.InvalidPartError(r)
-		}
-		// each part, except for the last, is expected to be at least 5mb in
-		// s3
-		if i < len(parts)-1 && len(uploadPart.Content) < 5*1024*1024 {
-			c.rollback(tx)
-			return nil, s2.EntityTooSmallError(r)
-		}
-
-		content = append(content, uploadPart.Content...)
-	}
-
-	version := ""
-	if bucket.Versioning == s2.VersioningEnabled {
-		version = util.RandomString(10)
-	}
-
-	obj, err := models.UpsertObject(tx, bucket.ID, key, version, content)
-	if err != nil {
-		c.rollback(tx)
-		return nil, err
-	}
-	if err := models.DeleteUpload(tx, bucket.ID, key, uploadID); err != nil {
-		c.rollback(tx)
-		return nil, err
-	}
 
 	result := s2.CompleteMultipartResult{
 		Location: models.Location,
-		ETag:     obj.ETag,
-	}
-	if bucket.Versioning == s2.VersioningEnabled {
-		result.Version = obj.Version
 	}
 
-	c.commit(tx)
-	return &result, nil
+	err := c.transaction(func(tx *gorm.DB) error {
+		bucket, err := models.GetBucket(tx, name)
+		if err != nil {
+			if gorm.IsRecordNotFoundError(err) {
+				return s2.NoSuchBucketError(r)
+			}
+			return err
+		}
+
+		_, err = models.GetUpload(tx, bucket.ID, key, uploadID)
+		if err != nil {
+			if gorm.IsRecordNotFoundError(err) {
+				return s2.NoSuchUploadError(r)
+			}
+			return err
+		}
+
+		content := []byte{}
+
+		for i, part := range parts {
+			uploadPart, err := models.GetUploadPart(tx, uploadID, part.PartNumber)
+			if err != nil {
+				if gorm.IsRecordNotFoundError(err) {
+					return s2.InvalidPartError(r)
+				}
+				return err
+			}
+			if uploadPart.ETag != part.ETag {
+				return s2.InvalidPartError(r)
+			}
+			// each part, except for the last, is expected to be at least 5mb in
+			// s3
+			if i < len(parts)-1 && len(uploadPart.Content) < 5*1024*1024 {
+				return s2.EntityTooSmallError(r)
+			}
+
+			content = append(content, uploadPart.Content...)
+		}
+
+		version := ""
+		if bucket.Versioning == s2.VersioningEnabled {
+			version = util.RandomString(10)
+		}
+
+		obj, err := models.UpsertObject(tx, bucket.ID, key, version, content)
+		if err != nil {
+			return err
+		}
+		if err := models.DeleteUpload(tx, bucket.ID, key, uploadID); err != nil {
+			return err
+		}
+
+		result.ETag = obj.ETag
+		if bucket.Versioning == s2.VersioningEnabled {
+			result.Version = obj.Version
+		}
+
+		return nil
+	})
+
+	return &result, err
 }
 
 func (c *Controller) ListMultipartChunks(r *http.Request, name, key, uploadID string, partNumberMarker, maxParts int) (*s2.ListMultipartChunksResult, error) {
 	c.logger.Tracef("ListMultipartChunks: name=%+v, key=%+v, uploadID=%+v, partNumberMarker=%+v, maxParts=%+v", name, key, uploadID, partNumberMarker, maxParts)
-	tx := c.trans()
-
-	_, err := models.GetBucket(tx, name)
-	if err != nil {
-		c.rollback(tx)
-		if gorm.IsRecordNotFoundError(err) {
-			return nil, s2.NoSuchBucketError(r)
-		}
-		return nil, err
-	}
-
-	uploadParts, err := models.ListUploadParts(tx, uploadID, partNumberMarker, maxParts+1)
-	if err != nil {
-		c.rollback(tx)
-		return nil, err
-	}
 
 	result := s2.ListMultipartChunksResult{
 		Initiator:    &models.GlobalUser,
@@ -210,22 +185,38 @@ func (c *Controller) ListMultipartChunks(r *http.Request, name, key, uploadID st
 		Parts:        []s2.Part{},
 	}
 
-	for _, uploadPart := range uploadParts {
-		if len(result.Parts) >= maxParts {
-			if maxParts > 0 {
-				result.IsTruncated = true
+	err := c.transaction(func(tx *gorm.DB) error {
+		_, err := models.GetBucket(tx, name)
+		if err != nil {
+			if gorm.IsRecordNotFoundError(err) {
+				return s2.NoSuchBucketError(r)
 			}
-			break
+			return err
 		}
 
-		result.Parts = append(result.Parts, s2.Part{
-			PartNumber: uploadPart.Number,
-			ETag:       uploadPart.ETag,
-		})
-	}
+		uploadParts, err := models.ListUploadParts(tx, uploadID, partNumberMarker, maxParts+1)
+		if err != nil {
+			return err
+		}
 
-	c.commit(tx)
-	return &result, nil
+		for _, uploadPart := range uploadParts {
+			if len(result.Parts) >= maxParts {
+				if maxParts > 0 {
+					result.IsTruncated = true
+				}
+				break
+			}
+
+			result.Parts = append(result.Parts, s2.Part{
+				PartNumber: uploadPart.Number,
+				ETag:       uploadPart.ETag,
+			})
+		}
+
+		return nil
+	})
+
+	return &result, err
 }
 
 func (c *Controller) UploadMultipartChunk(r *http.Request, name, key, uploadID string, partNumber int, reader io.Reader) (string, error) {
@@ -236,32 +227,33 @@ func (c *Controller) UploadMultipartChunk(r *http.Request, name, key, uploadID s
 		return "", err
 	}
 
-	tx := c.trans()
+	result := ""
 
-	bucket, err := models.GetBucket(tx, name)
-	if err != nil {
-		c.rollback(tx)
-		if gorm.IsRecordNotFoundError(err) {
-			return "", s2.NoSuchBucketError(r)
+	err = c.transaction(func(tx *gorm.DB) error {
+		bucket, err := models.GetBucket(tx, name)
+		if err != nil {
+			if gorm.IsRecordNotFoundError(err) {
+				return s2.NoSuchBucketError(r)
+			}
+			return err
 		}
-		return "", err
-	}
 
-	_, err = models.GetUpload(tx, bucket.ID, key, uploadID)
-	if err != nil {
-		c.rollback(tx)
-		if gorm.IsRecordNotFoundError(err) {
-			return "", s2.NoSuchUploadError(r)
+		_, err = models.GetUpload(tx, bucket.ID, key, uploadID)
+		if err != nil {
+			if gorm.IsRecordNotFoundError(err) {
+				return s2.NoSuchUploadError(r)
+			}
+			return err
 		}
-		return "", err
-	}
 
-	uploadPart, err := models.UpsertUploadPart(tx, uploadID, partNumber, content)
-	if err != nil {
-		c.rollback(tx)
-		return "", err
-	}
+		uploadPart, err := models.UpsertUploadPart(tx, uploadID, partNumber, content)
+		if err != nil {
+			return err
+		}
 
-	c.commit(tx)
-	return uploadPart.ETag, nil
+		result = uploadPart.ETag
+		return nil
+	})
+
+	return result, err
 }

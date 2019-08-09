@@ -2,7 +2,6 @@ package s2
 
 import (
 	"encoding/xml"
-	"fmt"
 	"net/http"
 	"time"
 
