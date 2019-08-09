@@ -6,7 +6,7 @@ import (
 	"github.com/pachyderm/s2/examples/sql/models"
 )
 
-func (c *Controller) SecretKey(r *http.Request, accessKey string, region *string) (secretKey *string, err error) {
+func (c *Controller) SecretKey(r *http.Request, accessKey string, region *string) (*string, error) {
 	c.logger.Tracef("SecretKey: accessKey=%+v, region=%+v", accessKey, region)
 
 	if accessKey == models.AccessKey {

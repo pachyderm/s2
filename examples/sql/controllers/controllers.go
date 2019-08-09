@@ -21,23 +21,29 @@ func NewController(logger *logrus.Entry, db *gorm.DB) *Controller {
 	}
 }
 
-func (c *Controller) trans() *gorm.DB {
+// transaction calls a given function with a database transaction. If the
+// function returns an error, the transaction is rolled back. Otherwise
+// it's committed.
+func (c *Controller) transaction(f func(*gorm.DB) error) error {
+	// This is unfortunate. gorm doesn't offer access sqlite3's locking
+	// mechanism, and sqlite3's default is to either serve table missing
+	// errors, or lock errors, when multiple transactions try to write to the
+	// database at the same time. So we have to wrap everything in a global
+	// lock.
 	c.lock.Lock()
-	return c.db.New().Begin()
-}
+	defer c.lock.Unlock()
 
-func (c *Controller) rollback(tx *gorm.DB) {
-	if err := tx.Rollback().Error; err != nil {
-		c.logger.WithError(err).Error("could not rollback transaction")
+	tx := c.db.New().Begin()
+	err := f(tx)
+	if err != nil {
+		if err := tx.Rollback().Error; err != nil {
+			c.logger.WithError(err).Error("could not rollback transaction")
+		}
+		return err
 	}
 
-	c.lock.Unlock()
-}
-
-func (c *Controller) commit(tx *gorm.DB) {
 	if err := tx.Commit().Error; err != nil {
 		c.logger.WithError(err).Error("could not commit transaction")
 	}
-
-	c.lock.Unlock()
+	return nil
 }

@@ -5,7 +5,6 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
-	"time"
 
 	"github.com/jinzhu/gorm"
 	"github.com/pachyderm/s2"
@@ -13,138 +12,139 @@ import (
 	"github.com/pachyderm/s2/examples/sql/util"
 )
 
-func (c *Controller) GetObject(r *http.Request, name, key, version string) (etag string, fetchedVersion string, deleteMarker bool, modTime time.Time, content io.ReadSeeker, err error) {
+func (c *Controller) GetObject(r *http.Request, name, key, version string) (*s2.GetObjectResult, error) {
 	c.logger.Tracef("GetObject: name=%+v, key=%+v, version=%+v", name, key, version)
-	tx := c.trans()
 
-	var bucket models.Bucket
-	bucket, err = models.GetBucket(tx, name)
-	if err != nil {
-		c.rollback(tx)
-		if gorm.IsRecordNotFoundError(err) {
-			err = s2.NoSuchBucketError(r)
-		}
-		return
+	result := s2.GetObjectResult{
+		ModTime: models.Epoch,
 	}
 
-	var object models.Object
-	if version != "" {
-		object, err = models.GetObject(tx, bucket.ID, key, version)
-	} else {
-		object, err = models.GetLatestLivingObject(tx, bucket.ID, key)
-		if gorm.IsRecordNotFoundError(err) {
-			object, err = models.GetLatestObject(tx, bucket.ID, key)
+	err := c.transaction(func(tx *gorm.DB) error {
+		bucket, err := models.GetBucket(tx, name)
+		if err != nil {
+			if gorm.IsRecordNotFoundError(err) {
+				return s2.NoSuchBucketError(r)
+			}
+			return err
 		}
-	}
-	if err != nil {
-		c.rollback(tx)
-		if gorm.IsRecordNotFoundError(err) {
-			err = s2.NoSuchKeyError(r)
-		}
-		return
-	}
 
-	if object.DeletedAt != nil {
-		deleteMarker = true
-		err = s2.NoSuchKeyError(r)
-	} else {
-		etag = object.ETag
-		modTime = models.Epoch
-		content = bytes.NewReader(object.Content)
-		if bucket.Versioning == s2.VersioningEnabled {
-			fetchedVersion = object.Version
+		var object models.Object
+		if version != "" {
+			object, err = models.GetObject(tx, bucket.ID, key, version)
+		} else {
+			object, err = models.GetLatestLivingObject(tx, bucket.ID, key)
+			if gorm.IsRecordNotFoundError(err) {
+				object, err = models.GetLatestObject(tx, bucket.ID, key)
+			}
 		}
-	}
+		if err != nil {
+			if gorm.IsRecordNotFoundError(err) {
+				return s2.NoSuchKeyError(r)
+			}
+			return err
+		}
 
-	c.commit(tx)
-	return
+		if object.DeletedAt != nil {
+			result.DeleteMarker = true
+		} else {
+			result.ETag = object.ETag
+			result.Content = bytes.NewReader(object.Content)
+			if bucket.Versioning == s2.VersioningEnabled {
+				result.Version = object.Version
+			}
+		}
+
+		return nil
+	})
+
+	return &result, err
 }
 
-func (c *Controller) PutObject(r *http.Request, name, key string, reader io.Reader) (etag, createdVersion string, err error) {
+func (c *Controller) PutObject(r *http.Request, name, key string, reader io.Reader) (*s2.PutObjectResult, error) {
 	c.logger.Tracef("PutObject: name=%+v, key=%+v", name, key)
 
 	bytes, err := ioutil.ReadAll(reader)
 	if err != nil {
-		return
+		return nil, err
 	}
 
-	tx := c.trans()
+	result := s2.PutObjectResult{}
 
-	var bucket models.Bucket
-	bucket, err = models.GetBucket(tx, name)
-	if err != nil {
-		c.rollback(tx)
-		if gorm.IsRecordNotFoundError(err) {
-			err = s2.NoSuchBucketError(r)
+	err = c.transaction(func(tx *gorm.DB) error {
+		bucket, err := models.GetBucket(tx, name)
+		if err != nil {
+			if gorm.IsRecordNotFoundError(err) {
+				return s2.NoSuchBucketError(r)
+			}
+			return err
 		}
-		return
-	}
 
-	version := ""
-	if bucket.Versioning == s2.VersioningEnabled {
-		version = util.RandomString(10)
-	}
+		version := ""
+		if bucket.Versioning == s2.VersioningEnabled {
+			version = util.RandomString(10)
+		}
 
-	var object models.Object
-	object, err = models.UpsertObject(tx, bucket.ID, key, version, bytes)
-	if err != nil {
-		c.rollback(tx)
-		return
-	}
+		object, err := models.UpsertObject(tx, bucket.ID, key, version, bytes)
+		if err != nil {
+			return err
+		}
 
-	etag = object.ETag
-	if bucket.Versioning == s2.VersioningEnabled {
-		createdVersion = object.Version
-	}
-	c.commit(tx)
-	return
+		result.ETag = object.ETag
+		if bucket.Versioning == s2.VersioningEnabled {
+			result.Version = object.Version
+		}
+
+		return nil
+	})
+
+	return &result, err
 }
 
-func (c *Controller) DeleteObject(r *http.Request, name, key, version string) (removedVersion string, deleteMarker bool, err error) {
+func (c *Controller) DeleteObject(r *http.Request, name, key, version string) (*s2.DeleteObjectResult, error) {
 	c.logger.Tracef("DeleteObject: name=%+v, key=%+v, version=%+v", name, key, version)
-	tx := c.trans()
 
-	var bucket models.Bucket
-	bucket, err = models.GetBucket(tx, name)
-	if err != nil {
-		c.rollback(tx)
-		if gorm.IsRecordNotFoundError(err) {
-			err = s2.NoSuchBucketError(r)
-		}
-		return
-	}
+	result := s2.DeleteObjectResult{}
 
-	var object models.Object
-	if version != "" {
-		object, err = models.GetObject(tx, bucket.ID, key, version)
-	} else {
-		object, err = models.GetLatestObject(tx, bucket.ID, key)
-	}
-	if err != nil {
-		c.rollback(tx)
-		if gorm.IsRecordNotFoundError(err) {
-			err = s2.NoSuchKeyError(r)
-		}
-		return
-	}
-
-	if object.DeletedAt != nil {
-		if err = tx.Unscoped().Delete(&object).Error; err != nil {
-			c.rollback(tx)
-			return
+	err := c.transaction(func(tx *gorm.DB) error {
+		bucket, err := models.GetBucket(tx, name)
+		if err != nil {
+			if gorm.IsRecordNotFoundError(err) {
+				return s2.NoSuchBucketError(r)
+			}
+			return err
 		}
 
-		deleteMarker = true
-	} else {
-		if err = tx.Delete(&object).Error; err != nil {
-			c.rollback(tx)
-			return
+		var object models.Object
+		if version != "" {
+			object, err = models.GetObject(tx, bucket.ID, key, version)
+		} else {
+			object, err = models.GetLatestObject(tx, bucket.ID, key)
 		}
-	}
+		if err != nil {
+			if gorm.IsRecordNotFoundError(err) {
+				return s2.NoSuchKeyError(r)
+			}
+			return err
+		}
 
-	if bucket.Versioning == s2.VersioningEnabled {
-		removedVersion = object.Version
-	}
-	c.commit(tx)
-	return
+		if bucket.Versioning == s2.VersioningEnabled {
+			result.Version = object.Version
+		}
+
+		if object.DeletedAt != nil {
+			if err = tx.Unscoped().Delete(&object).Error; err != nil {
+				return err
+			}
+
+			result.DeleteMarker = true
+		} else {
+			if err = tx.Delete(&object).Error; err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
+
+	return &result, err
 }

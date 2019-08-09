@@ -3,28 +3,34 @@ package controllers
 import (
 	"net/http"
 
+	"github.com/jinzhu/gorm"
 	"github.com/pachyderm/s2"
 	"github.com/pachyderm/s2/examples/sql/models"
 )
 
-func (c *Controller) ListBuckets(r *http.Request) (owner *s2.User, buckets []s2.Bucket, err error) {
+func (c *Controller) ListBuckets(r *http.Request) (*s2.ListBucketsResult, error) {
 	c.logger.Tracef("ListBuckets")
-	tx := c.trans()
 
-	var dbBuckets []*models.Bucket
-	if err = tx.Find(&dbBuckets).Error; err != nil {
-		c.rollback(tx)
-		return
+	result := s2.ListBucketsResult{
+		Owner:   &models.GlobalUser,
+		Buckets: []s2.Bucket{},
 	}
 
-	for _, bucket := range dbBuckets {
-		buckets = append(buckets, s2.Bucket{
-			Name:         bucket.Name,
-			CreationDate: models.Epoch,
-		})
-	}
+	err := c.transaction(func(tx *gorm.DB) error {
+		var buckets []*models.Bucket
+		if err := tx.Find(&buckets).Error; err != nil {
+			return err
+		}
 
-	owner = &models.GlobalUser
-	c.commit(tx)
-	return
+		for _, bucket := range buckets {
+			result.Buckets = append(result.Buckets, s2.Bucket{
+				Name:         bucket.Name,
+				CreationDate: models.Epoch,
+			})
+		}
+
+		return nil
+	})
+
+	return &result, err
 }
