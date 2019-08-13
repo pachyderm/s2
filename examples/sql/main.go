@@ -20,13 +20,6 @@ func main() {
 	}
 	defer db.Close()
 
-	// dbLogger := logrus.WithFields(logrus.Fields{
-	// 	"source": "gorm",
-	// }).Writer()
-	// defer dbLogger.Close()
-	// db.LogMode(true)
-	//db.SetLogger(stdlog.New(dbLogger, "", 0))
-
 	models.Init(db)
 
 	logrus.SetLevel(logrus.TraceLevel)
