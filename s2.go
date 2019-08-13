@@ -90,6 +90,7 @@ func attachBucketRoutes(logger *logrus.Entry, router *mux.Router, handler *bucke
 	router.Methods("GET").Queries("location", "").HandlerFunc(handler.location)
 	router.Methods("GET", "HEAD").HandlerFunc(handler.get)
 	router.Methods("PUT").HandlerFunc(handler.put)
+	router.Methods("POST").Queries("delete", "").HandlerFunc(handler.post)
 	router.Methods("DELETE").HandlerFunc(handler.del)
 }
 

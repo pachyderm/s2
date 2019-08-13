@@ -222,6 +222,79 @@ func (c *Controller) SetBucketVersioning(r *http.Request, name, status string) e
 	})
 }
 
+func (c *Controller) DeleteObjects(r *http.Request, name string, quiet bool, objects []s2.DeleteObject) (*s2.DeleteObjectsResult, error) {
+	c.logger.Tracef("DeleteObjects: name=%+v, quiet=%+v, objects=%+v", name, quiet, objects)
+
+	result := s2.DeleteObjectsResult{
+		Deleted: []s2.DeleteObjectsItem{},
+		Errors:  []s2.DeleteObjectsError{},
+	}
+
+	err := c.transaction(func(tx *gorm.DB) error {
+		bucket, err := models.GetBucket(tx, name)
+		if err != nil {
+			if gorm.IsRecordNotFoundError(err) {
+				return s2.NoSuchBucketError(r)
+			}
+			return err
+		}
+
+		result := s2.DeleteObjectsResult{
+			Deleted: []s2.DeleteObjectsItem{},
+			Errors:  []s2.DeleteObjectsError{},
+		}
+
+		for _, deleteObject := range objects {
+			var object models.Object
+			if deleteObject.Version != "" {
+				object, err = models.GetObject(tx, bucket.ID, deleteObject.Key, deleteObject.Version)
+			} else {
+				object, err = models.GetLatestObject(tx, bucket.ID, deleteObject.Key)
+			}
+
+			if err != nil {
+				if gorm.IsRecordNotFoundError(err) {
+					deleteObjectError := s2.DeleteObjectsErrorFromError(deleteObject.Key, s2.NoSuchKeyError(r))
+					result.Errors = append(result.Errors, deleteObjectError)
+					continue
+				}
+				return err
+			}
+
+			version := ""
+			if bucket.Versioning == s2.VersioningEnabled {
+				version = object.Version
+			}
+
+			if object.DeletedAt != nil {
+				if err = tx.Unscoped().Delete(&object).Error; err != nil {
+					return err
+				}
+
+				result.Deleted = append(result.Deleted, s2.DeleteObjectsItem{
+					Key:                 deleteObject.Key,
+					Version:             version,
+					DeleteMarker:        true,
+					DeleteMarkerVersion: version,
+				})
+			} else {
+				if err = tx.Delete(&object).Error; err != nil {
+					return err
+				}
+
+				result.Deleted = append(result.Deleted, s2.DeleteObjectsItem{
+					Key:     deleteObject.Key,
+					Version: version,
+				})
+			}
+		}
+
+		return nil
+	})
+
+	return &result, err
+}
+
 func isDelimiterFiltered(key, prefix, delimiter string) bool {
 	if delimiter == "" {
 		return false

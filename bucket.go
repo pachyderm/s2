@@ -96,6 +96,43 @@ type ListObjectsResult struct {
 	IsTruncated bool
 }
 
+// DeleteObject specifies an object in a multi-object deletion operation.
+type DeleteObject struct {
+	// Key specifies the object key
+	Key string `xml:"Key"`
+	// Version is the version of the object, or an empty string if versioning
+	// is not enabled or supported.
+	Version string `xml:"VersionId"`
+}
+
+// DeleteObjectsResult is a response from a DeleteObjects call
+type DeleteObjectsResult struct {
+	XMLName xml.Name             `xml:"DeleteResult"`
+	Deleted []DeleteObjectsItem  `xml:"Deleted"`
+	Errors  []DeleteObjectsError `xml:"Error"`
+}
+
+type DeleteObjectsItem struct {
+	Key                 string `xml:"Key"`
+	Version             string `xml:"Version,omitempty"`
+	DeleteMarker        bool   `xml:"Code,omitempty"`
+	DeleteMarkerVersion string `xml:"DeleteMarkerVersionId,omitempty"`
+}
+
+type DeleteObjectsError struct {
+	Key     string `xml:"Key"`
+	Code    string `xml:"Code"`
+	Message string `xml:"Message"`
+}
+
+func DeleteObjectsErrorFromError(key string, err *Error) DeleteObjectsError {
+	return DeleteObjectsError{
+		Key:     key,
+		Code:    err.Code,
+		Message: err.Message,
+	}
+}
+
 // ListObjectVersionsResult is a response from a ListObjectVersions call
 type ListObjectVersionsResult struct {
 	// Versions are the list of versions returned
@@ -128,6 +165,9 @@ type BucketController interface {
 
 	// SetBucketVersioning sets the state of versioning on the given bucket
 	SetBucketVersioning(r *http.Request, bucket, status string) error
+
+	// DeleteObjects deletes multiple objects in the bucket
+	DeleteObjects(r *http.Request, bucket string, quiet bool, objects []DeleteObject) (*DeleteObjectsResult, error)
 }
 
 // unimplementedBucketController defines a controller that returns
@@ -160,6 +200,10 @@ func (c unimplementedBucketController) GetBucketVersioning(r *http.Request, buck
 
 func (c unimplementedBucketController) SetBucketVersioning(r *http.Request, bucket, status string) error {
 	return NotImplementedError(r)
+}
+
+func (c unimplementedBucketController) DeleteObjects(r *http.Request, bucket string, quiet bool, objects []DeleteObject) (*DeleteObjectsResult, error) {
+	return nil, NotImplementedError(r)
 }
 
 type bucketHandler struct {
@@ -261,6 +305,29 @@ func (h bucketHandler) put(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
+}
+
+func (h bucketHandler) post(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	bucket := vars["bucket"]
+
+	payload := struct {
+		XMLName xml.Name       `xml:"Delete"`
+		Quiet   bool           `xml:"Quiet"`
+		Objects []DeleteObject `xml:"Object"`
+	}{}
+	if err := readXMLBody(r, &payload); err != nil {
+		WriteError(h.logger, w, r, err)
+		return
+	}
+
+	result, err := h.controller.DeleteObjects(r, bucket, payload.Quiet, payload.Objects)
+	if err != nil {
+		WriteError(h.logger, w, r, err)
+		return
+	}
+
+	writeXML(h.logger, w, r, http.StatusOK, result)
 }
 
 func (h bucketHandler) del(w http.ResponseWriter, r *http.Request) {
