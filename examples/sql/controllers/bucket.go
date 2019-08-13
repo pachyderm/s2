@@ -140,7 +140,7 @@ func (c *Controller) ListObjectVersions(r *http.Request, name, prefix, keyMarker
 				result.DeleteMarkers = append(result.DeleteMarkers, s2.DeleteMarker{
 					Key:          object.Key,
 					Version:      object.Version,
-					IsLatest:     latestObject.Version == object.Version,
+					IsLatest:     latestObject.ID == object.ID,
 					LastModified: models.Epoch,
 					Owner:        models.GlobalUser,
 				})
@@ -148,7 +148,7 @@ func (c *Controller) ListObjectVersions(r *http.Request, name, prefix, keyMarker
 				result.Versions = append(result.Versions, s2.Version{
 					Key:          object.Key,
 					Version:      object.Version,
-					IsLatest:     latestObject.Version == object.Version,
+					IsLatest:     latestObject.ID == object.ID,
 					LastModified: models.Epoch,
 					ETag:         object.ETag,
 					Size:         uint64(len(object.Content)),

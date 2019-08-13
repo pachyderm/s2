@@ -52,11 +52,12 @@ func GetBucket(db *gorm.DB, name string) (Bucket, error) {
 }
 
 type Object struct {
+    ID        uint      `gorm:"primary_key"`
     UpdatedAt time.Time `gorm:"index"`
 
-    BucketID uint   `gorm:"primary_key,not null"`
-    Key      string `gorm:"primary_key,not null"`
-    Version  string `gorm:"primary_key"`
+    BucketID uint   `gorm:"not null"`
+    Key      string `gorm:"not null,index:idx_object_key"`
+    Version  string `gorm:"index:idx_object_version"`
 
     DeleteMarker bool `gorm:"not null"`
 
@@ -91,35 +92,7 @@ func ListObjects(db *gorm.DB, bucketID uint, keyMarker, versionMarker string, li
     return objects, q.Error
 }
 
-func UpsertUnversionedObjectContent(db *gorm.DB, bucketID uint, key string, content []byte) (Object, error) {
-    etag := fmt.Sprintf("%x", md5.Sum(content))
-
-    object, err := GetObject(db, bucketID, key, "")
-    if err != nil && !gorm.IsRecordNotFoundError(err) {
-        return object, err
-    }
-
-    if !gorm.IsRecordNotFoundError(err) {
-        object.ETag = etag
-        object.Content = content
-        object.DeleteMarker = false
-        err = db.Save(&object).Error
-        return object, err
-    }
-
-    object = Object{
-        BucketID:     bucketID,
-        Key:          key,
-        Version:      "",
-        DeleteMarker: false,
-        ETag:         etag,
-        Content:      content,
-    }
-    err = db.Create(&object).Error
-    return object, err
-}
-
-func CreateVersionedObjectContent(db *gorm.DB, bucketID uint, key, version string, content []byte) (Object, error) {
+func CreateObjectContent(db *gorm.DB, bucketID uint, key, version string, content []byte) (Object, error) {
     object := Object{
         BucketID:     bucketID,
         Key:          key,
