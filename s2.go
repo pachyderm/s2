@@ -81,7 +81,6 @@ func attachBucketRoutes(logger *logrus.Entry, router *mux.Router, handler *bucke
 	router.Methods("GET", "PUT").Queries("requestPayment", "").HandlerFunc(NotImplementedEndpoint(logger))
 	router.Methods("GET", "PUT", "DELETE").Queries("tagging", "").HandlerFunc(NotImplementedEndpoint(logger))
 	router.Methods("GET", "PUT", "DELETE").Queries("website", "").HandlerFunc(NotImplementedEndpoint(logger))
-	router.Methods("POST").HandlerFunc(NotImplementedEndpoint(logger))
 
 	router.Methods("GET").Queries("versioning", "").HandlerFunc(handler.versioning)
 	router.Methods("PUT").Queries("versioning", "").HandlerFunc(handler.setVersioning)
@@ -92,6 +91,9 @@ func attachBucketRoutes(logger *logrus.Entry, router *mux.Router, handler *bucke
 	router.Methods("PUT").HandlerFunc(handler.put)
 	router.Methods("POST").Queries("delete", "").HandlerFunc(objectHandler.post)
 	router.Methods("DELETE").HandlerFunc(handler.del)
+
+	// catch-all for POST calls that aren't using the delete subresource
+	router.Methods("POST").HandlerFunc(NotImplementedEndpoint(logger))
 }
 
 // attachBucketRoutes adds object-related routes to a router
