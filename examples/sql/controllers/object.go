@@ -100,7 +100,7 @@ func (c *Controller) PutObject(r *http.Request, name, key string, reader io.Read
 				}
 			}
 
-			object, err = models.CreateObjectContent(tx, bucket.ID, key, "", bytes)
+			object, err = models.CreateObjectContent(tx, bucket.ID, key, "null", bytes)
 			if err != nil {
 				return err
 			}
@@ -146,7 +146,12 @@ func (c *Controller) DeleteObject(r *http.Request, name, key, version string) (*
 		if object.DeleteMarker {
 			result.DeleteMarker = true
 		} else {
-			object, err = models.CreateObjectDeleteMarker(tx, bucket.ID, key, version)
+			deleteVersion := "null"
+			if bucket.Versioning == s2.VersioningEnabled {
+				deleteVersion = util.RandomString(10)
+			}
+
+			object, err = models.CreateObjectDeleteMarker(tx, bucket.ID, key, deleteVersion)
 			if err != nil {
 				return err
 			}

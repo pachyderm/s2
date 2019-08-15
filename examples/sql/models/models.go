@@ -57,7 +57,7 @@ type Object struct {
 
     BucketID uint   `gorm:"not null"`
     Key      string `gorm:"not null,index:idx_object_key"`
-    Version  string `gorm:"index:idx_object_version"`
+    Version  string `gorm:"not null,index:idx_object_version"`
 
     DeleteMarker bool `gorm:"not null"`
 

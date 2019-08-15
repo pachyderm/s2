@@ -151,7 +151,7 @@ func (c *Controller) CompleteMultipart(r *http.Request, name, key, uploadID stri
 			content = append(content, uploadPart.Content...)
 		}
 
-		version := ""
+		version := "null"
 		if bucket.Versioning == s2.VersioningEnabled {
 			version = util.RandomString(10)
 			result.Version = version
