@@ -263,46 +263,42 @@ func (c *Controller) DeleteObjects(r *http.Request, name string, quiet bool, obj
 
 		for _, deleteObject := range objects {
 			var object models.Object
-			if deleteObject.Version != "" {
+			if deleteObject.Version != "" && bucket.Versioning == s2.VersioningEnabled {
 				object, err = models.GetObject(tx, bucket.ID, deleteObject.Key, deleteObject.Version)
 			} else {
 				object, err = models.GetLatestObject(tx, bucket.ID, deleteObject.Key)
 			}
-
-			if err != nil {
-				if gorm.IsRecordNotFoundError(err) {
-					deleteObjectError := s2.DeleteObjectsErrorFromError(deleteObject.Key, s2.NoSuchKeyError(r))
-					result.Errors = append(result.Errors, deleteObjectError)
-					continue
-				}
+			if err != nil && !gorm.IsRecordNotFoundError(err) {
 				return err
 			}
 
-			version := ""
-			if bucket.Versioning == s2.VersioningEnabled {
-				version = object.Version
-			}
-
-			if object.DeletedAt != nil {
-				if err = tx.Unscoped().Delete(&object).Error; err != nil {
-					return err
-				}
-
-				result.Deleted = append(result.Deleted, s2.DeleteObjectsItem{
-					Key:                 deleteObject.Key,
-					Version:             version,
-					DeleteMarker:        true,
-					DeleteMarkerVersion: version,
-				})
-			} else {
+			if object.DeleteMarker {
 				if err = tx.Delete(&object).Error; err != nil {
 					return err
 				}
 
-				result.Deleted = append(result.Deleted, s2.DeleteObjectsItem{
-					Key:     deleteObject.Key,
-					Version: version,
-				})
+				if !quiet {
+					result.Deleted = append(result.Deleted, s2.DeleteObjectsItem{
+						Key:                 deleteObject.Key,
+						Version:             object.Version,
+						DeleteMarker:        true,
+						DeleteMarkerVersion: object.Version,
+					})
+				}
+			} else {
+				object.DeleteMarker = true
+				object.ETag = ""
+				object.Content = nil
+				if err = tx.Save(&object).Error; err != nil {
+					return err
+				}
+
+				if !quiet {
+					result.Deleted = append(result.Deleted, s2.DeleteObjectsItem{
+						Key:     deleteObject.Key,
+						Version: object.Version,
+					})
+				}
 			}
 		}
 
