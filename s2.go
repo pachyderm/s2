@@ -62,7 +62,7 @@ var (
 )
 
 // attachBucketRoutes adds bucket-related routes to a router
-func attachBucketRoutes(logger *logrus.Entry, router *mux.Router, handler *bucketHandler, multipartHandler *multipartHandler) {
+func attachBucketRoutes(logger *logrus.Entry, router *mux.Router, handler *bucketHandler, multipartHandler *multipartHandler, objectHandler *objectHandler) {
 	router.Methods("GET", "PUT").Queries("accelerate", "").HandlerFunc(NotImplementedEndpoint(logger))
 	router.Methods("GET", "PUT").Queries("acl", "").HandlerFunc(NotImplementedEndpoint(logger))
 	router.Methods("GET", "PUT", "DELETE").Queries("analytics", "").HandlerFunc(NotImplementedEndpoint(logger))
@@ -90,7 +90,7 @@ func attachBucketRoutes(logger *logrus.Entry, router *mux.Router, handler *bucke
 	router.Methods("GET").Queries("location", "").HandlerFunc(handler.location)
 	router.Methods("GET", "HEAD").HandlerFunc(handler.get)
 	router.Methods("PUT").HandlerFunc(handler.put)
-	router.Methods("POST").Queries("delete", "").HandlerFunc(handler.post)
+	router.Methods("POST").Queries("delete", "").HandlerFunc(objectHandler.post)
 	router.Methods("DELETE").HandlerFunc(handler.del)
 }
 
@@ -526,9 +526,9 @@ func (h *S2) Router() *mux.Router {
 	// slash" functionality, because that uses redirects which doesn't always
 	// play nice with s3 clients.
 	trailingSlashBucketRouter := router.Path(`/{bucket:[a-zA-Z0-9\-_\.]{1,255}}/`).Subrouter()
-	attachBucketRoutes(h.logger, trailingSlashBucketRouter, bucketHandler, multipartHandler)
+	attachBucketRoutes(h.logger, trailingSlashBucketRouter, bucketHandler, multipartHandler, objectHandler)
 	bucketRouter := router.Path(`/{bucket:[a-zA-Z0-9\-_\.]{1,255}}`).Subrouter()
-	attachBucketRoutes(h.logger, bucketRouter, bucketHandler, multipartHandler)
+	attachBucketRoutes(h.logger, bucketRouter, bucketHandler, multipartHandler, objectHandler)
 
 	// Object-related routes
 	objectRouter := router.Path(`/{bucket:[a-zA-Z0-9\-_\.]{1,255}}/{key:.+}`).Subrouter()
