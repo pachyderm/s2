@@ -51,61 +51,34 @@ func GetBucket(db *gorm.DB, name string) (Bucket, error) {
     return bucket, err
 }
 
-// Gorm has a bug where it deserializes empty byte arrays as nil, which then
-// triggers downstream serialization of the object that don't expect nil. This
-// works around the issue.
-func fixContent(object *Object) {
-    if object.Content == nil {
-        object.Content = []byte{}
-    }
-}
-
 type Object struct {
-    ID        uint       `gorm:"primary_key"`
-    UpdatedAt time.Time  `gorm:"index"`
-    DeletedAt *time.Time `gorm:"index" jsonapi:"attr,deleted_at"`
+    ID uint `gorm:"primary_key"`
 
     BucketID uint   `gorm:"not null"`
     Key      string `gorm:"not null,index:idx_object_key"`
-    Version  string `gorm:"index:idx_object_version"`
+    Version  string `gorm:"not null,index:idx_object_version"`
 
-    ETag    string `gorm:"not null"`
-    Content []byte `gorm:"not null"`
+    DeleteMarker bool `gorm:"not null"`
+
+    ETag    string
+    Content []byte
 }
 
 func GetObject(db *gorm.DB, bucketID uint, key, version string) (Object, error) {
     var object Object
-    err := db.Unscoped().Where("bucket_id = ? AND key = ? AND version = ?", bucketID, key, version).First(&object).Error
-    fixContent(&object)
+    err := db.Where("bucket_id = ? AND key = ? AND version = ?", bucketID, key, version).First(&object).Error
     return object, err
 }
 
 func GetLatestObject(db *gorm.DB, bucketID uint, key string) (Object, error) {
     var object Object
-    err := db.Unscoped().Order("updated_at DESC").Where("bucket_id = ? AND key = ?", bucketID, key).First(&object).Error
-    fixContent(&object)
+    err := db.Order("ID DESC").Where("bucket_id = ? AND key = ?", bucketID, key).First(&object).Error
     return object, err
-}
-
-func GetLatestLivingObject(db *gorm.DB, bucketID uint, key string) (Object, error) {
-    var object Object
-    err := db.Order("updated_at DESC").Where("bucket_id = ? AND key = ?", bucketID, key).First(&object).Error
-    fixContent(&object)
-    return object, err
-}
-
-func ListLatestObjects(db *gorm.DB, bucketID uint, marker string, limit int) ([]Object, error) {
-    var objects []Object
-    err := db.Limit(limit).Order("bucket_id, key").Where("bucket_id = ? AND key > ?", bucketID, marker).Find(&objects).Error
-    for _, object := range objects {
-        fixContent(&object)
-    }
-    return objects, err
 }
 
 func ListObjects(db *gorm.DB, bucketID uint, keyMarker, versionMarker string, limit int) ([]Object, error) {
     var objects []Object
-    q := db.Unscoped().Limit(limit).Order("bucket_id, key, version")
+    q := db.Limit(limit).Order("bucket_id, key, version")
 
     if keyMarker == "" && versionMarker == "" {
         q = q.Where("bucket_id = ?", bucketID).Find(&objects)
@@ -118,31 +91,27 @@ func ListObjects(db *gorm.DB, bucketID uint, keyMarker, versionMarker string, li
     return objects, q.Error
 }
 
-func UpsertObject(db *gorm.DB, bucketID uint, key, version string, content []byte) (Object, error) {
-    etag := fmt.Sprintf("%x", md5.Sum(content))
-
-    object, err := GetLatestObject(db, bucketID, key)
-    if err != nil {
-        if !gorm.IsRecordNotFoundError(err) {
-            return Object{}, err
-        }
-    } else {
-        if object.Version == version && object.DeletedAt == nil {
-            object.ETag = etag
-            object.Content = content
-            err = db.Save(&object).Error
-            return object, err
-        }
+func CreateObjectContent(db *gorm.DB, bucketID uint, key, version string, content []byte) (Object, error) {
+    object := Object{
+        BucketID:     bucketID,
+        Key:          key,
+        Version:      version,
+        DeleteMarker: false,
+        ETag:         fmt.Sprintf("%x", md5.Sum(content)),
+        Content:      content,
     }
+    err := db.Create(&object).Error
+    return object, err
+}
 
-    object = Object{
-        BucketID: bucketID,
-        Key:      key,
-        Version:  version,
-        ETag:     etag,
-        Content:  content,
+func CreateObjectDeleteMarker(db *gorm.DB, bucketID uint, key, version string) (Object, error) {
+    object := Object{
+        BucketID:     bucketID,
+        Key:          key,
+        Version:      version,
+        DeleteMarker: true,
     }
-    err = db.Create(&object).Error
+    err := db.Create(&object).Error
     return object, err
 }
 
