@@ -52,8 +52,7 @@ func GetBucket(db *gorm.DB, name string) (Bucket, error) {
 }
 
 type Object struct {
-    ID        uint      `gorm:"primary_key"`
-    UpdatedAt time.Time `gorm:"index"`
+    ID uint `gorm:"primary_key"`
 
     BucketID uint   `gorm:"not null"`
     Key      string `gorm:"not null,index:idx_object_key"`
@@ -73,7 +72,7 @@ func GetObject(db *gorm.DB, bucketID uint, key, version string) (Object, error) 
 
 func GetLatestObject(db *gorm.DB, bucketID uint, key string) (Object, error) {
     var object Object
-    err := db.Order("updated_at DESC").Where("bucket_id = ? AND key = ?", bucketID, key).First(&object).Error
+    err := db.Order("ID DESC").Where("bucket_id = ? AND key = ?", bucketID, key).First(&object).Error
     return object, err
 }
 
