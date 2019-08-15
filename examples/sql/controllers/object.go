@@ -81,18 +81,32 @@ func (c *Controller) PutObject(r *http.Request, name, key string, reader io.Read
 			return err
 		}
 
-		version := ""
 		if bucket.Versioning == s2.VersioningEnabled {
-			version = util.RandomString(10)
-			result.Version = version
-		}
+			object, err := models.CreateObjectContent(tx, bucket.ID, key, util.RandomString(10), bytes)
+			if err != nil {
+				return err
+			}
 
-		object, err := models.CreateObjectContent(tx, bucket.ID, key, version, bytes)
-		if err != nil {
-			return err
-		}
+			result.Version = object.Version
+			result.ETag = object.ETag
+		} else {
+			object, err := models.GetLatestObject(tx, bucket.ID, key)
+			if err != nil && !gorm.IsRecordNotFoundError(err) {
+				return err
+			}
+			if !gorm.IsRecordNotFoundError(err) {
+				if err = tx.Delete(&object).Error; err != nil {
+					return err
+				}
+			}
 
-		result.ETag = object.ETag
+			object, err = models.CreateObjectContent(tx, bucket.ID, key, "", bytes)
+			if err != nil {
+				return err
+			}
+
+			result.ETag = object.ETag
+		}
 		return nil
 	})
 
@@ -115,15 +129,14 @@ func (c *Controller) DeleteObject(r *http.Request, name, key, version string) (*
 
 		if version != "" && bucket.Versioning == s2.VersioningEnabled {
 			object, err := models.GetObject(tx, bucket.ID, key, version)
-			if err != nil {
-				if gorm.IsRecordNotFoundError(err) {
-					return s2.NoSuchKeyError(r)
-				}
+			if err != nil && !gorm.IsRecordNotFoundError(err) {
 				return err
 			}
 
-			if err = tx.Delete(&object).Error; err != nil {
-				return err
+			if !gorm.IsRecordNotFoundError(err) {
+				if err = tx.Delete(&object).Error; err != nil {
+					return err
+				}
 			}
 
 			result.Version = object.Version
@@ -132,15 +145,14 @@ func (c *Controller) DeleteObject(r *http.Request, name, key, version string) (*
 			}
 		} else {
 			object, err := models.GetLatestObject(tx, bucket.ID, key)
-			if err != nil {
-				if gorm.IsRecordNotFoundError(err) {
-					return s2.NoSuchKeyError(r)
-				}
+			if err != nil && !gorm.IsRecordNotFoundError(err) {
 				return err
 			}
 
-			if err = tx.Delete(&object).Error; err != nil {
-				return err
+			if !gorm.IsRecordNotFoundError(err) {
+				if err = tx.Delete(&object).Error; err != nil {
+					return err
+				}
 			}
 
 			object, err = models.CreateObjectDeleteMarker(tx, bucket.ID, key, version)
