@@ -127,42 +127,30 @@ func (c *Controller) DeleteObject(r *http.Request, name, key, version string) (*
 			return err
 		}
 
+		var object models.Object
 		if version != "" && bucket.Versioning == s2.VersioningEnabled {
-			object, err := models.GetObject(tx, bucket.ID, key, version)
-			if err != nil && !gorm.IsRecordNotFoundError(err) {
-				return err
-			}
-
-			if !gorm.IsRecordNotFoundError(err) {
-				if err = tx.Delete(&object).Error; err != nil {
-					return err
-				}
-			}
-
-			result.Version = object.Version
-			if object.DeleteMarker {
-				result.DeleteMarker = true
-			}
+			object, err = models.GetObject(tx, bucket.ID, key, version)
 		} else {
-			object, err := models.GetLatestObject(tx, bucket.ID, key)
-			if err != nil && !gorm.IsRecordNotFoundError(err) {
+			object, err = models.GetLatestObject(tx, bucket.ID, key)
+		}
+		if err != nil && !gorm.IsRecordNotFoundError(err) {
+			return err
+		}
+
+		if !gorm.IsRecordNotFoundError(err) {
+			if err = tx.Delete(&object).Error; err != nil {
 				return err
 			}
+		}
 
-			if !gorm.IsRecordNotFoundError(err) {
-				if err = tx.Delete(&object).Error; err != nil {
-					return err
-				}
-			}
-
+		if object.DeleteMarker {
+			result.DeleteMarker = true
+		} else {
 			object, err = models.CreateObjectDeleteMarker(tx, bucket.ID, key, version)
 			if err != nil {
 				return err
 			}
-
-			if bucket.Versioning == s2.VersioningEnabled {
-				result.Version = object.Version
-			}
+			result.Version = object.Version
 		}
 
 		return nil
