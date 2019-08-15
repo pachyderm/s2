@@ -29,13 +29,10 @@ func (c *Controller) GetObject(r *http.Request, name, key, version string) (*s2.
 		}
 
 		var object models.Object
-		if version != "" {
+		if bucket.Versioning == s2.VersioningEnabled && version != "" {
 			object, err = models.GetObject(tx, bucket.ID, key, version)
 		} else {
-			object, err = models.GetLatestLivingObject(tx, bucket.ID, key)
-			if gorm.IsRecordNotFoundError(err) {
-				object, err = models.GetLatestObject(tx, bucket.ID, key)
-			}
+			object, err = models.GetLatestObject(tx, bucket.ID, key)
 		}
 		if err != nil {
 			if gorm.IsRecordNotFoundError(err) {
@@ -44,14 +41,19 @@ func (c *Controller) GetObject(r *http.Request, name, key, version string) (*s2.
 			return err
 		}
 
-		if object.DeletedAt != nil {
-			result.DeleteMarker = true
+		if bucket.Versioning == s2.VersioningEnabled {
+			result.Version = object.Version
+		}
+
+		if object.DeleteMarker {
+			if bucket.Versioning == s2.VersioningEnabled {
+				result.DeleteMarker = true
+			} else {
+				return s2.NoSuchKeyError(r)
+			}
 		} else {
 			result.ETag = object.ETag
 			result.Content = bytes.NewReader(object.Content)
-			if bucket.Versioning == s2.VersioningEnabled {
-				result.Version = object.Version
-			}
 		}
 
 		return nil
@@ -79,21 +81,32 @@ func (c *Controller) PutObject(r *http.Request, name, key string, reader io.Read
 			return err
 		}
 
-		version := ""
 		if bucket.Versioning == s2.VersioningEnabled {
-			version = util.RandomString(10)
-		}
+			object, err := models.CreateObjectContent(tx, bucket.ID, key, util.RandomString(10), bytes)
+			if err != nil {
+				return err
+			}
 
-		object, err := models.UpsertObject(tx, bucket.ID, key, version, bytes)
-		if err != nil {
-			return err
-		}
-
-		result.ETag = object.ETag
-		if bucket.Versioning == s2.VersioningEnabled {
 			result.Version = object.Version
-		}
+			result.ETag = object.ETag
+		} else {
+			object, err := models.GetLatestObject(tx, bucket.ID, key)
+			if err != nil && !gorm.IsRecordNotFoundError(err) {
+				return err
+			}
+			if !gorm.IsRecordNotFoundError(err) {
+				if err = tx.Delete(&object).Error; err != nil {
+					return err
+				}
+			}
 
+			object, err = models.CreateObjectContent(tx, bucket.ID, key, "null", bytes)
+			if err != nil {
+				return err
+			}
+
+			result.ETag = object.ETag
+		}
 		return nil
 	})
 
@@ -115,34 +128,32 @@ func (c *Controller) DeleteObject(r *http.Request, name, key, version string) (*
 		}
 
 		var object models.Object
-		if version != "" {
+		if version != "" && bucket.Versioning == s2.VersioningEnabled {
 			object, err = models.GetObject(tx, bucket.ID, key, version)
 		} else {
 			object, err = models.GetLatestObject(tx, bucket.ID, key)
 		}
-		if err != nil {
-			if gorm.IsRecordNotFoundError(err) {
-				return s2.NoSuchKeyError(r)
-			}
+		if err != nil && !gorm.IsRecordNotFoundError(err) {
 			return err
 		}
 
-		if bucket.Versioning == s2.VersioningEnabled {
-			result.Version = object.Version
-		}
-
-		if object.DeletedAt != nil {
-			if err = tx.Unscoped().Delete(&object).Error; err != nil {
+		if object.DeleteMarker {
+			if err = tx.Delete(&object).Error; err != nil {
 				return err
 			}
 
 			result.DeleteMarker = true
-		} else {
-			if err = tx.Delete(&object).Error; err != nil {
-				return err
-			}
+			return nil
 		}
 
+		object.DeleteMarker = true
+		object.ETag = ""
+		object.Content = nil
+		if err = tx.Save(&object).Error; err != nil {
+			return err
+		}
+
+		result.Version = object.Version
 		return nil
 	})
 

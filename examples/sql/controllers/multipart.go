@@ -151,22 +151,21 @@ func (c *Controller) CompleteMultipart(r *http.Request, name, key, uploadID stri
 			content = append(content, uploadPart.Content...)
 		}
 
-		version := ""
+		version := "null"
 		if bucket.Versioning == s2.VersioningEnabled {
 			version = util.RandomString(10)
+			result.Version = version
 		}
 
-		obj, err := models.UpsertObject(tx, bucket.ID, key, version, content)
+		object, err := models.CreateObjectContent(tx, bucket.ID, key, version, content)
 		if err != nil {
 			return err
 		}
+
+		result.ETag = object.ETag
+
 		if err := models.DeleteUpload(tx, bucket.ID, key, uploadID); err != nil {
 			return err
-		}
-
-		result.ETag = obj.ETag
-		if bucket.Versioning == s2.VersioningEnabled {
-			result.Version = obj.Version
 		}
 
 		return nil

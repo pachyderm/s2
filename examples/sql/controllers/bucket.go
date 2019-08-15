@@ -35,10 +35,14 @@ func (c *Controller) ListObjects(r *http.Request, name, prefix, marker, delimite
 			return err
 		}
 
-		objects, err := models.ListLatestObjects(tx, bucket.ID, marker, maxKeys+1)
+		objects, err := models.ListObjects(tx, bucket.ID, marker, "", maxKeys+1)
 		if err != nil {
 			return err
 		}
+
+		// mapping of already listed objects, so we don't include multiple
+		// versions of the same object
+		covered := map[string]bool{}
 
 		for _, object := range objects {
 			if !strings.HasPrefix(object.Key, prefix) || isDelimiterFiltered(object.Key, prefix, delimiter) {
@@ -52,6 +56,19 @@ func (c *Controller) ListObjects(r *http.Request, name, prefix, marker, delimite
 				}
 			}
 
+			if _, ok := covered[object.Key]; ok {
+				continue
+			}
+
+			latestObject, err := models.GetLatestObject(tx, bucket.ID, object.Key)
+			if err != nil {
+				return err
+			}
+			covered[latestObject.Key] = true
+			if latestObject.DeleteMarker {
+				continue
+			}
+
 			if len(result.Contents)+len(result.CommonPrefixes) >= maxKeys {
 				if maxKeys > 0 {
 					result.IsTruncated = true
@@ -60,10 +77,10 @@ func (c *Controller) ListObjects(r *http.Request, name, prefix, marker, delimite
 			}
 
 			result.Contents = append(result.Contents, s2.Contents{
-				Key:          object.Key,
+				Key:          latestObject.Key,
 				LastModified: models.Epoch,
-				ETag:         object.ETag,
-				Size:         uint64(len(object.Content)),
+				ETag:         latestObject.ETag,
+				Size:         uint64(len(latestObject.Content)),
 				StorageClass: models.StorageClass,
 				Owner:        models.GlobalUser,
 			})
@@ -99,7 +116,7 @@ func (c *Controller) ListObjectVersions(r *http.Request, name, prefix, keyMarker
 
 		// s3tests expects the listings to be ordered by update date
 		sort.Slice(objects, func(i, j int) bool {
-			return objects[i].UpdatedAt.After(objects[j].UpdatedAt)
+			return objects[i].ID > objects[j].ID
 		})
 
 		for _, object := range objects {
@@ -119,7 +136,15 @@ func (c *Controller) ListObjectVersions(r *http.Request, name, prefix, keyMarker
 				return err
 			}
 
-			if object.DeletedAt == nil {
+			if object.DeleteMarker {
+				result.DeleteMarkers = append(result.DeleteMarkers, s2.DeleteMarker{
+					Key:          object.Key,
+					Version:      object.Version,
+					IsLatest:     latestObject.ID == object.ID,
+					LastModified: models.Epoch,
+					Owner:        models.GlobalUser,
+				})
+			} else {
 				result.Versions = append(result.Versions, s2.Version{
 					Key:          object.Key,
 					Version:      object.Version,
@@ -128,14 +153,6 @@ func (c *Controller) ListObjectVersions(r *http.Request, name, prefix, keyMarker
 					ETag:         object.ETag,
 					Size:         uint64(len(object.Content)),
 					StorageClass: models.StorageClass,
-					Owner:        models.GlobalUser,
-				})
-			} else {
-				result.DeleteMarkers = append(result.DeleteMarkers, s2.DeleteMarker{
-					Key:          object.Key,
-					Version:      object.Version,
-					IsLatest:     latestObject.ID == object.ID,
-					LastModified: models.Epoch,
 					Owner:        models.GlobalUser,
 				})
 			}
