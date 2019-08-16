@@ -137,23 +137,30 @@ func (c *Controller) DeleteObject(r *http.Request, name, key, version string) (*
 			return err
 		}
 
-		if object.DeleteMarker {
+		if gorm.IsRecordNotFoundError(err) {
+			object, err = models.CreateObjectDeleteMarker(tx, bucket.ID, key, util.RandomString(10))
+			if err != nil {
+				return err
+			}
+
+			result.Version = object.Version
+		} else if object.DeleteMarker {
 			if err = tx.Delete(&object).Error; err != nil {
 				return err
 			}
 
 			result.DeleteMarker = true
-			return nil
+		} else {
+			object.DeleteMarker = true
+			object.ETag = ""
+			object.Content = nil
+			if err = tx.Save(&object).Error; err != nil {
+				return err
+			}
+
+			result.Version = object.Version
 		}
 
-		object.DeleteMarker = true
-		object.ETag = ""
-		object.Content = nil
-		if err = tx.Save(&object).Error; err != nil {
-			return err
-		}
-
-		result.Version = object.Version
 		return nil
 	})
 
