@@ -1,0 +1,18 @@
+dist: trusty
+language: go
+go:
+  - "1.13.1"
+
+script:
+  - ./etc/travis.sh
+
+before_cache:
+  # Travis can't cache files that are not readable by "others"
+  - chmod -R a+r ${GOPATH}/pkg
+cache:
+  directories:
+  - $${GOPATH}/pkg
+
+notifications:
+  email:
+on_success: never
