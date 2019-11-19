@@ -18,7 +18,7 @@ import (
 
 // WriteError serializes an error to a response as XML
 func WriteError(logger *logrus.Entry, w http.ResponseWriter, r *http.Request, err error) {
-	s3Err := NewFromGenericError(r, err)
+	s3Err := newGenericError(r, err)
 	writeXML(logger, w, r, s3Err.HTTPStatus, s3Err)
 }
 

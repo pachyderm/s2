@@ -348,7 +348,7 @@ func (h *multipartHandler) complete(w http.ResponseWriter, r *http.Request) {
 		select {
 		case value := <-ch:
 			if value.err != nil {
-				s3Error := NewFromGenericError(r, value.err)
+				s3Error := newGenericError(r, value.err)
 
 				if streaming {
 					writeXMLBody(h.logger, w, s3Error)
