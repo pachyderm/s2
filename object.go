@@ -199,7 +199,7 @@ func (h *objectHandler) post(w http.ResponseWriter, r *http.Request) {
 	for _, object := range payload.Objects {
 		result, err := h.controller.DeleteObject(r, bucket, object.Key, object.Version)
 		if err != nil {
-			s3Err := NewFromGenericError(r, err)
+			s3Err := newGenericError(r, err)
 
 			marshallable.Errors = append(marshallable.Errors, struct {
 				Key     string `xml:"Key"`
