@@ -8,10 +8,9 @@ go:
 git:
   submodules: false
 before_install:
-  - sed -i 's/git@github.com:/https:\/\/github.com\//' .gitmodules
-
+  - ./etc/travis_before_install.sh
 script:
-  - ./etc/travis.sh
+  - ./etc/travis_test.sh
 
 before_cache:
   # Travis can't cache files that are not readable by "others"
@@ -19,7 +18,3 @@ before_cache:
 cache:
   directories:
   - $${GOPATH}/pkg
-
-notifications:
-  email:
-on_success: never
