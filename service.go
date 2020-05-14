@@ -51,5 +51,11 @@ func (h *serviceHandler) get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// some clients (e.g. minio-python) can't handle sub-seconds in datetime
+	// output
+	for _, bucket := range result.Buckets {
+		bucket.CreationDate = bucket.CreationDate.Round(time.Second)
+	}
+
 	writeXML(h.logger, w, r, http.StatusOK, result)
 }

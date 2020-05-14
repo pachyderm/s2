@@ -162,6 +162,12 @@ func (h *multipartHandler) list(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// some clients (e.g. minio-python) can't handle sub-seconds in datetime
+	// output
+	for _, upload := range result.Uploads {
+		upload.Initiated = upload.Initiated.Round(time.Second)
+	}
+
 	marshallable := struct {
 		XMLName            xml.Name `xml:"http://s3.amazonaws.com/doc/2006-03-01/ ListMultipartUploadsResult"`
 		Bucket             string   `xml:"Bucket"`

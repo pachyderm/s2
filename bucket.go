@@ -205,6 +205,12 @@ func (h *bucketHandler) get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// some clients (e.g. minio-python) can't handle sub-seconds in datetime
+	// output
+	for _, contents := range result.Contents {
+		contents.LastModified = contents.LastModified.Round(time.Second)
+	}
+
 	for _, c := range result.Contents {
 		c.ETag = addETagQuotes(c.ETag)
 	}
@@ -341,6 +347,15 @@ func (h *bucketHandler) listVersions(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		WriteError(h.logger, w, r, err)
 		return
+	}
+
+	// some clients (e.g. minio-python) can't handle sub-seconds in datetime
+	// output
+	for _, version := range result.Versions {
+		version.LastModified = version.LastModified.Round(time.Second)
+	}
+	for _, deleteMarker := range result.DeleteMarkers {
+		deleteMarker.LastModified = deleteMarker.LastModified.Round(time.Second)
 	}
 
 	for _, v := range result.Versions {
