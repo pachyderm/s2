@@ -18,7 +18,7 @@ type Bucket struct {
 
 // ListBucketsResult is a response from a ListBucket call
 type ListBucketsResult struct {
-	XMLName xml.Name `xml:"ListAllMyBucketsResult"`
+	XMLName xml.Name `xml:"http://s3.amazonaws.com/doc/2006-03-01/ ListAllMyBucketsResult"`
 	// Owner is the owner of the buckets
 	Owner *User `xml:"Owner"`
 	// Buckets are a list of buckets under the given owner

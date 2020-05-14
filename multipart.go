@@ -163,7 +163,7 @@ func (h *multipartHandler) list(w http.ResponseWriter, r *http.Request) {
 	}
 
 	marshallable := struct {
-		XMLName            xml.Name `xml:"ListMultipartUploadsResult"`
+		XMLName            xml.Name `xml:"http://s3.amazonaws.com/doc/2006-03-01/ ListMultipartUploadsResult"`
 		Bucket             string   `xml:"Bucket"`
 		KeyMarker          string   `xml:"KeyMarker"`
 		UploadIDMarker     string   `xml:"UploadIdMarker"`
@@ -227,7 +227,7 @@ func (h *multipartHandler) listChunks(w http.ResponseWriter, r *http.Request) {
 	}
 
 	marshallable := struct {
-		XMLName              xml.Name `xml:"ListPartsResult"`
+		XMLName              xml.Name `xml:"http://s3.amazonaws.com/doc/2006-03-01/ ListPartsResult"`
 		Bucket               string   `xml:"Bucket"`
 		Key                  string   `xml:"Key"`
 		UploadID             string   `xml:"UploadId"`
@@ -279,7 +279,7 @@ func (h *multipartHandler) init(w http.ResponseWriter, r *http.Request) {
 	}
 
 	marshallable := struct {
-		XMLName  xml.Name `xml:"InitiateMultipartUploadResult"`
+		XMLName  xml.Name `xml:"http://s3.amazonaws.com/doc/2006-03-01/ InitiateMultipartUploadResult"`
 		Bucket   string   `xml:"Bucket"`
 		Key      string   `xml:"Key"`
 		UploadID string   `xml:"UploadId"`
@@ -357,7 +357,7 @@ func (h *multipartHandler) complete(w http.ResponseWriter, r *http.Request) {
 				}
 			} else {
 				marshallable := struct {
-					XMLName  xml.Name `xml:"CompleteMultipartUploadResult"`
+					XMLName  xml.Name `xml:"http://s3.amazonaws.com/doc/2006-03-01/ CompleteMultipartUploadResult"`
 					Location string   `xml:"Location"`
 					Bucket   string   `xml:"Bucket"`
 					Key      string   `xml:"Key"`

@@ -170,7 +170,7 @@ func (h *objectHandler) post(w http.ResponseWriter, r *http.Request) {
 	}
 
 	marshallable := struct {
-		XMLName xml.Name `xml:"DeleteResult"`
+		XMLName xml.Name `xml:"http://s3.amazonaws.com/doc/2006-03-01/ DeleteResult"`
 		Deleted []struct {
 			Key                 string `xml:"Key"`
 			Version             string `xml:"Version,omitempty"`

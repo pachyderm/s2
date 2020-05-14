@@ -178,7 +178,7 @@ func (h *bucketHandler) location(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeXML(h.logger, w, r, http.StatusOK, struct {
-		XMLName  xml.Name `xml:"LocationConstraint"`
+		XMLName  xml.Name `xml:"http://s3.amazonaws.com/doc/2006-03-01/ LocationConstraint"`
 		Location string   `xml:",innerxml"`
 	}{
 		Location: location,
@@ -210,7 +210,7 @@ func (h *bucketHandler) get(w http.ResponseWriter, r *http.Request) {
 	}
 
 	marshallable := struct {
-		XMLName        xml.Name         `xml:"ListBucketResult"`
+		XMLName        xml.Name         `xml:"http://s3.amazonaws.com/doc/2006-03-01/ ListBucketResult"`
 		Contents       []Contents       `xml:"Contents"`
 		CommonPrefixes []CommonPrefixes `xml:"CommonPrefixes"`
 		Delimiter      string           `xml:"Delimiter,omitempty"`
@@ -286,7 +286,7 @@ func (h *bucketHandler) versioning(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result := struct {
-		XMLName xml.Name `xml:"VersioningConfiguration"`
+		XMLName xml.Name `xml:"http://s3.amazonaws.com/doc/2006-03-01/ VersioningConfiguration"`
 		Status  string   `xml:"Status,omitempty"`
 	}{
 		Status: status,
@@ -348,7 +348,7 @@ func (h *bucketHandler) listVersions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	marshallable := struct {
-		XMLName             xml.Name       `xml:"ListVersionsResult"`
+		XMLName             xml.Name       `xml:"http://s3.amazonaws.com/doc/2006-03-01/ ListVersionsResult"`
 		Delimiter           string         `xml:"Delimiter,omitempty"`
 		IsTruncated         bool           `xml:"IsTruncated"`
 		KeyMarker           string         `xml:"KeyMarker"`
