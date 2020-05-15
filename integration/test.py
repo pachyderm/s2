@@ -81,7 +81,7 @@ def test_minio_lib():
     assert client.get_object("test-minio-lib", "small").read() == SMALL_FILE
     assert client.get_object("test-minio-lib", "large").read() == LARGE_FILE
 
-    assert client.remove_object("test-minio-lib", "small")
-    assert client.remove_object("test-minio-lib", "large")
+    client.remove_object("test-minio-lib", "small")
+    client.remove_object("test-minio-lib", "large")
 
     client.remove_bucket("test-minio-lib")

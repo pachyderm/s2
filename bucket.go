@@ -89,9 +89,9 @@ type Version struct {
 // ListObjectsResult is a response from a ListObjects call
 type ListObjectsResult struct {
 	// Contents are the list of objects returned
-	Contents []Contents
+	Contents []*Contents
 	// CommonPrefixes are the list of common prefixes returned
-	CommonPrefixes []CommonPrefixes
+	CommonPrefixes []*CommonPrefixes
 	// IsTruncated specifies whether this is the end of the list or not
 	IsTruncated bool
 }
@@ -99,9 +99,9 @@ type ListObjectsResult struct {
 // ListObjectVersionsResult is a response from a ListObjectVersions call
 type ListObjectVersionsResult struct {
 	// Versions are the list of versions returned
-	Versions []Version
+	Versions []*Version
 	// DeleteMarkers are the list of delete markers returned
-	DeleteMarkers []DeleteMarker
+	DeleteMarkers []*DeleteMarker
 	// IsTruncated specifies whether this is the end of the list or not
 	IsTruncated bool
 }
@@ -208,7 +208,7 @@ func (h *bucketHandler) get(w http.ResponseWriter, r *http.Request) {
 	// some clients (e.g. minio-python) can't handle sub-seconds in datetime
 	// output
 	for _, contents := range result.Contents {
-		contents.LastModified = contents.LastModified.Round(time.Second)
+		contents.LastModified = contents.LastModified.UTC().Round(time.Second)
 	}
 
 	for _, c := range result.Contents {
@@ -216,16 +216,16 @@ func (h *bucketHandler) get(w http.ResponseWriter, r *http.Request) {
 	}
 
 	marshallable := struct {
-		XMLName        xml.Name         `xml:"http://s3.amazonaws.com/doc/2006-03-01/ ListBucketResult"`
-		Contents       []Contents       `xml:"Contents"`
-		CommonPrefixes []CommonPrefixes `xml:"CommonPrefixes"`
-		Delimiter      string           `xml:"Delimiter,omitempty"`
-		IsTruncated    bool             `xml:"IsTruncated"`
-		Marker         string           `xml:"Marker"`
-		MaxKeys        int              `xml:"MaxKeys"`
-		Name           string           `xml:"Name"`
-		NextMarker     string           `xml:"NextMarker,omitempty"`
-		Prefix         string           `xml:"Prefix"`
+		XMLName        xml.Name          `xml:"http://s3.amazonaws.com/doc/2006-03-01/ ListBucketResult"`
+		Contents       []*Contents       `xml:"Contents"`
+		CommonPrefixes []*CommonPrefixes `xml:"CommonPrefixes"`
+		Delimiter      string            `xml:"Delimiter,omitempty"`
+		IsTruncated    bool              `xml:"IsTruncated"`
+		Marker         string            `xml:"Marker"`
+		MaxKeys        int               `xml:"MaxKeys"`
+		Name           string            `xml:"Name"`
+		NextMarker     string            `xml:"NextMarker,omitempty"`
+		Prefix         string            `xml:"Prefix"`
 	}{
 		Name:           bucket,
 		Prefix:         prefix,
@@ -352,10 +352,10 @@ func (h *bucketHandler) listVersions(w http.ResponseWriter, r *http.Request) {
 	// some clients (e.g. minio-python) can't handle sub-seconds in datetime
 	// output
 	for _, version := range result.Versions {
-		version.LastModified = version.LastModified.Round(time.Second)
+		version.LastModified = version.LastModified.UTC().Round(time.Second)
 	}
 	for _, deleteMarker := range result.DeleteMarkers {
-		deleteMarker.LastModified = deleteMarker.LastModified.Round(time.Second)
+		deleteMarker.LastModified = deleteMarker.LastModified.UTC().Round(time.Second)
 	}
 
 	for _, v := range result.Versions {
@@ -363,18 +363,18 @@ func (h *bucketHandler) listVersions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	marshallable := struct {
-		XMLName             xml.Name       `xml:"http://s3.amazonaws.com/doc/2006-03-01/ ListVersionsResult"`
-		Delimiter           string         `xml:"Delimiter,omitempty"`
-		IsTruncated         bool           `xml:"IsTruncated"`
-		KeyMarker           string         `xml:"KeyMarker"`
-		NextKeyMarker       string         `xml:"NextKeyMarker,omitempty"`
-		MaxKeys             int            `xml:"MaxKeys"`
-		Name                string         `xml:"Name"`
-		VersionIDMarker     string         `xml:"VersionIdKeyMarker"`
-		NextVersionIDMarker string         `xml:"NextVersionIdKeyMarker,omitempty"`
-		Prefix              string         `xml:"Prefix"`
-		Versions            []Version      `xml:"Version"`
-		DeleteMarkers       []DeleteMarker `xml:"DeleteMarker"`
+		XMLName             xml.Name        `xml:"http://s3.amazonaws.com/doc/2006-03-01/ ListVersionsResult"`
+		Delimiter           string          `xml:"Delimiter,omitempty"`
+		IsTruncated         bool            `xml:"IsTruncated"`
+		KeyMarker           string          `xml:"KeyMarker"`
+		NextKeyMarker       string          `xml:"NextKeyMarker,omitempty"`
+		MaxKeys             int             `xml:"MaxKeys"`
+		Name                string          `xml:"Name"`
+		VersionIDMarker     string          `xml:"VersionIdKeyMarker"`
+		NextVersionIDMarker string          `xml:"NextVersionIdKeyMarker,omitempty"`
+		Prefix              string          `xml:"Prefix"`
+		Versions            []*Version      `xml:"Version"`
+		DeleteMarkers       []*DeleteMarker `xml:"DeleteMarker"`
 	}{
 		IsTruncated:     result.IsTruncated,
 		KeyMarker:       keyMarker,

@@ -60,7 +60,7 @@ type ListMultipartResult struct {
 	// IsTruncated specifies whether this is the end of the list or not
 	IsTruncated bool
 	// Uploads are the list of uploads returned
-	Uploads []Upload
+	Uploads []*Upload
 }
 
 // CompleteMultipartResult is a response from a CompleteMultipart call
@@ -86,7 +86,7 @@ type ListMultipartChunksResult struct {
 	// IsTruncated specifies whether this is the end of the list or not
 	IsTruncated bool
 	// Parts are the list of parts returned
-	Parts []Part
+	Parts []*Part
 }
 
 // MultipartController is an interface that specifies multipart-related
@@ -165,19 +165,19 @@ func (h *multipartHandler) list(w http.ResponseWriter, r *http.Request) {
 	// some clients (e.g. minio-python) can't handle sub-seconds in datetime
 	// output
 	for _, upload := range result.Uploads {
-		upload.Initiated = upload.Initiated.Round(time.Second)
+		upload.Initiated = upload.Initiated.UTC().Round(time.Second)
 	}
 
 	marshallable := struct {
-		XMLName            xml.Name `xml:"http://s3.amazonaws.com/doc/2006-03-01/ ListMultipartUploadsResult"`
-		Bucket             string   `xml:"Bucket"`
-		KeyMarker          string   `xml:"KeyMarker"`
-		UploadIDMarker     string   `xml:"UploadIdMarker"`
-		NextKeyMarker      string   `xml:"NextKeyMarker"`
-		NextUploadIDMarker string   `xml:"NextUploadIdMarker"`
-		MaxUploads         int      `xml:"MaxUploads"`
-		IsTruncated        bool     `xml:"IsTruncated"`
-		Uploads            []Upload `xml:"Upload"`
+		XMLName            xml.Name  `xml:"http://s3.amazonaws.com/doc/2006-03-01/ ListMultipartUploadsResult"`
+		Bucket             string    `xml:"Bucket"`
+		KeyMarker          string    `xml:"KeyMarker"`
+		UploadIDMarker     string    `xml:"UploadIdMarker"`
+		NextKeyMarker      string    `xml:"NextKeyMarker"`
+		NextUploadIDMarker string    `xml:"NextUploadIdMarker"`
+		MaxUploads         int       `xml:"MaxUploads"`
+		IsTruncated        bool      `xml:"IsTruncated"`
+		Uploads            []*Upload `xml:"Upload"`
 	}{
 		Bucket:         bucket,
 		KeyMarker:      keyMarker,
@@ -244,7 +244,7 @@ func (h *multipartHandler) listChunks(w http.ResponseWriter, r *http.Request) {
 		NextPartNumberMarker int      `xml:"NextPartNumberMarker"`
 		MaxParts             int      `xml:"MaxParts"`
 		IsTruncated          bool     `xml:"IsTruncated"`
-		Parts                []Part   `xml:"Part"`
+		Parts                []*Part  `xml:"Part"`
 	}{
 		Bucket:           bucket,
 		Key:              key,

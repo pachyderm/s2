@@ -1,8 +1,8 @@
 package controllers
 
 import (
-	"io"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 
@@ -16,7 +16,7 @@ func (c *Controller) ListMultipart(r *http.Request, name, keyMarker, uploadIDMar
 	c.logger.Tracef("ListMultipart: name=%+v, keyMarker=%+v, uploadIDMarker=%+v, maxUploads=%+v", name, keyMarker, uploadIDMarker, maxUploads)
 
 	result := s2.ListMultipartResult{
-		Uploads: []s2.Upload{},
+		Uploads: []*s2.Upload{},
 	}
 
 	err := c.transaction(func(tx *gorm.DB) error {
@@ -41,7 +41,7 @@ func (c *Controller) ListMultipart(r *http.Request, name, keyMarker, uploadIDMar
 				break
 			}
 
-			result.Uploads = append(result.Uploads, s2.Upload{
+			result.Uploads = append(result.Uploads, &s2.Upload{
 				Key:          upload.Key,
 				UploadID:     upload.ID,
 				Initiator:    models.GlobalUser,
@@ -182,7 +182,7 @@ func (c *Controller) ListMultipartChunks(r *http.Request, name, key, uploadID st
 		Initiator:    &models.GlobalUser,
 		Owner:        &models.GlobalUser,
 		StorageClass: models.StorageClass,
-		Parts:        []s2.Part{},
+		Parts:        []*s2.Part{},
 	}
 
 	err := c.transaction(func(tx *gorm.DB) error {
@@ -207,7 +207,7 @@ func (c *Controller) ListMultipartChunks(r *http.Request, name, key, uploadID st
 				break
 			}
 
-			result.Parts = append(result.Parts, s2.Part{
+			result.Parts = append(result.Parts, &s2.Part{
 				PartNumber: uploadPart.Number,
 				ETag:       uploadPart.ETag,
 			})

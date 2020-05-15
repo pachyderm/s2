@@ -13,7 +13,7 @@ func (c *Controller) ListBuckets(r *http.Request) (*s2.ListBucketsResult, error)
 
 	result := s2.ListBucketsResult{
 		Owner:   &models.GlobalUser,
-		Buckets: []s2.Bucket{},
+		Buckets: []*s2.Bucket{},
 	}
 
 	err := c.transaction(func(tx *gorm.DB) error {
@@ -23,7 +23,7 @@ func (c *Controller) ListBuckets(r *http.Request) (*s2.ListBucketsResult, error)
 		}
 
 		for _, bucket := range buckets {
-			result.Buckets = append(result.Buckets, s2.Bucket{
+			result.Buckets = append(result.Buckets, &s2.Bucket{
 				Name:         bucket.Name,
 				CreationDate: models.Epoch,
 			})
