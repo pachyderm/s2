@@ -18,12 +18,16 @@ s3 libs/bins have subtlety different behavior, but the conformance tests only
 check corner cases with boto3.
 """
 
-from io import BytesIO
 import os
+import shutil
+import tempfile
+import subprocess
+from io import BytesIO
 from urllib.parse import urlparse
 
 import boto3
 import minio
+import pytest
 
 def create_file(size):
     return b"x" * size
@@ -34,6 +38,10 @@ SECRET_KEY = os.environ["S3_SECRET_KEY"]
 
 SMALL_FILE = create_file(1)
 LARGE_FILE = create_file(65*1024*1024)
+
+def skip_if_no_bin(name):
+    test = shutil.which(name) == None
+    return pytest.mark.skipif(test, reason=f"executable '{name}' is not available")
 
 def test_boto_lib():
     client = boto3.client(
@@ -85,3 +93,41 @@ def test_minio_lib():
     client.remove_object("test-minio-lib", "large")
 
     client.remove_bucket("test-minio-lib")
+
+@skip_if_no_bin("mc")
+def test_minio_bin():
+    url = urlparse(ADDRESS)
+    creds = f"{url.scheme}://{ACCESS_KEY}:{SECRET_KEY}@{url.netloc}"
+
+    def mc(*args):
+        proc = subprocess.run(["mc", *args], check=True, stdout=subprocess.PIPE, env={
+            "PATH": os.environ["PATH"],
+            "MC_HOST_s2": creds,
+        })
+        return proc.stdout.decode("utf8")
+
+    mc("mb", "s2/test-minio-bin")
+
+    with tempfile.NamedTemporaryFile() as f:
+        f.write(SMALL_FILE)
+        f.flush()
+        mc("cp", f.name, "s2/test-minio-bin/small")
+
+    with tempfile.NamedTemporaryFile() as f:
+        f.write(LARGE_FILE)
+        f.flush()
+        mc("cp", f.name, "s2/test-minio-bin/large")
+
+    mc("ls", "s2/test-minio-bin")
+
+    with tempfile.NamedTemporaryFile() as f:
+        mc("cp", "s2/test-minio-bin/small", f.name)
+        assert f.read() == SMALL_FILE
+
+    with tempfile.NamedTemporaryFile() as f:
+        mc("cp", "s2/test-minio-bin/large", f.name)
+        assert f.read() == LARGE_FILE
+
+    mc("rm", "s2/test-minio-bin/small")
+    mc("rm", "s2/test-minio-bin/large")
+    mc("rb", "s2/test-minio-bin")
