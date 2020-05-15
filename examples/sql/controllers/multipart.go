@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"io"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 
@@ -139,7 +140,7 @@ func (c *Controller) CompleteMultipart(r *http.Request, name, key, uploadID stri
 				}
 				return err
 			}
-			if uploadPart.ETag != part.ETag {
+			if fmt.Sprintf("\"%s\"", uploadPart.ETag) != part.ETag {
 				return s2.InvalidPartError(r)
 			}
 			// each part, except for the last, is expected to be at least 5mb in
