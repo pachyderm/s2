@@ -41,7 +41,7 @@ LARGE_FILE = create_file(65*1024*1024)
 
 def skip_if_no_bin(name):
     test = shutil.which(name) == None
-    return pytest.mark.skipif(test, reason=f"executable '{name}' is not available")
+    return pytest.mark.skipif(test, reason="executable '{}' is not available".format(name))
 
 def test_boto_lib():
     client = boto3.client(
@@ -97,7 +97,7 @@ def test_minio_lib():
 @skip_if_no_bin("mc")
 def test_minio_bin():
     url = urlparse(ADDRESS)
-    creds = f"{url.scheme}://{ACCESS_KEY}:{SECRET_KEY}@{url.netloc}"
+    creds = "{}://{}:{}@{}".format(url.scheme, ACCESS_KEY, SECRET_KEY, url.netloc)
 
     def mc(*args):
         proc = subprocess.run(["mc", *args], check=True, stdout=subprocess.PIPE, env={
