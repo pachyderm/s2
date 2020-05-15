@@ -13,3 +13,12 @@ pushd ./conformance/s3-tests
     source virtualenv/bin/activate
     pip install nose-exclude==0.5.0
 popd
+
+pushd ~
+    mkdir -p bin
+    pushd bin
+        wget https://dl.min.io/client/mc/release/linux-amd64/archive/mc.RELEASE.2020-05-06T18-00-07Z
+        mv mc.RELEASE.2020-05-06T18-00-07Z mc
+        chmod +x mc
+    popd
+popd
