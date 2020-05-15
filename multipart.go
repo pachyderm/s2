@@ -99,7 +99,7 @@ type MultipartController interface {
 	// AbortMultipart aborts an in-progress multipart upload
 	AbortMultipart(r *http.Request, bucket, key, uploadID string) error
 	// CompleteMultipart finishes a multipart upload
-	CompleteMultipart(r *http.Request, bucket, key, uploadID string, parts []Part) (*CompleteMultipartResult, error)
+	CompleteMultipart(r *http.Request, bucket, key, uploadID string, parts []*Part) (*CompleteMultipartResult, error)
 	// ListMultipartChunks lists the constituent chunks of an in-progress
 	// multipart upload
 	ListMultipartChunks(r *http.Request, bucket, key, uploadID string, partNumberMarker, maxParts int) (*ListMultipartChunksResult, error)
@@ -123,7 +123,7 @@ func (c unimplementedMultipartController) AbortMultipart(r *http.Request, bucket
 	return NotImplementedError(r)
 }
 
-func (c unimplementedMultipartController) CompleteMultipart(r *http.Request, bucket, key, uploadID string, parts []Part) (*CompleteMultipartResult, error) {
+func (c unimplementedMultipartController) CompleteMultipart(r *http.Request, bucket, key, uploadID string, parts []*Part) (*CompleteMultipartResult, error) {
 	return nil, NotImplementedError(r)
 }
 
@@ -312,7 +312,7 @@ func (h *multipartHandler) complete(w http.ResponseWriter, r *http.Request) {
 
 	payload := struct {
 		XMLName xml.Name `xml:"CompleteMultipartUpload"`
-		Parts   []Part   `xml:"Part"`
+		Parts   []*Part   `xml:"Part"`
 	}{}
 	if err := readXMLBody(r, &payload); err != nil {
 		WriteError(h.logger, w, r, err)

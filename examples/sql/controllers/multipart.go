@@ -106,7 +106,7 @@ func (c *Controller) AbortMultipart(r *http.Request, name, key, uploadID string)
 	})
 }
 
-func (c *Controller) CompleteMultipart(r *http.Request, name, key, uploadID string, parts []s2.Part) (*s2.CompleteMultipartResult, error) {
+func (c *Controller) CompleteMultipart(r *http.Request, name, key, uploadID string, parts []*s2.Part) (*s2.CompleteMultipartResult, error) {
 	c.logger.Tracef("CompleteMultipart: name=%+v, key=%+v, uploadID=%+v, parts=%+v", name, key, uploadID, parts)
 
 	result := s2.CompleteMultipartResult{
