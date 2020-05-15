@@ -6,5 +6,5 @@ make ./conformance/s3-tests
 
 pushd examples/sql
     make run &
-    make conformance-test
+    make test
 popd
