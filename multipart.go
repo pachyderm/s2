@@ -312,7 +312,7 @@ func (h *multipartHandler) complete(w http.ResponseWriter, r *http.Request) {
 
 	payload := struct {
 		XMLName xml.Name `xml:"CompleteMultipartUpload"`
-		Parts   []*Part   `xml:"Part"`
+		Parts   []*Part  `xml:"Part"`
 	}{}
 	if err := readXMLBody(r, &payload); err != nil {
 		WriteError(h.logger, w, r, err)
