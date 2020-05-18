@@ -21,4 +21,8 @@ pushd ~
         mv mc.RELEASE.2020-05-06T18-00-07Z mc
         chmod +x mc
     popd
+
+    curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+    unzip awscliv2.zip
+    sudo ./aws/install
 popd

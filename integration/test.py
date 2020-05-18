@@ -32,6 +32,23 @@ import pytest
 def create_file(size):
     return b"x" * size
 
+def upload_file(contents, cb):
+    with tempfile.NamedTemporaryFile() as f:
+        f.write(contents)
+        f.flush()
+        cb(f.name)
+
+def download_file(contents, cb):
+    tmp = tempfile.NamedTemporaryFile(delete=False)
+    tmp.close()
+
+    cb(tmp.name)
+    
+    with open(tmp.name, "rb") as f:
+        assert f.read() == contents
+
+    os.remove(tmp.name)
+
 ADDRESS = os.environ["S3_ADDRESS"]
 ACCESS_KEY = os.environ["S3_ACCESS_KEY"]
 SECRET_KEY = os.environ["S3_SECRET_KEY"]
@@ -107,27 +124,31 @@ def test_minio_bin():
         return proc.stdout.decode("utf8")
 
     mc("mb", "s2/test-minio-bin")
-
-    with tempfile.NamedTemporaryFile() as f:
-        f.write(SMALL_FILE)
-        f.flush()
-        mc("cp", f.name, "s2/test-minio-bin/small")
-
-    with tempfile.NamedTemporaryFile() as f:
-        f.write(LARGE_FILE)
-        f.flush()
-        mc("cp", f.name, "s2/test-minio-bin/large")
-
+    upload_file(SMALL_FILE, lambda name: mc("cp", name, "s2/test-minio-bin/small"))
+    upload_file(LARGE_FILE, lambda name: mc("cp", name, "s2/test-minio-bin/large"))
     mc("ls", "s2/test-minio-bin")
-
-    with tempfile.NamedTemporaryFile() as f:
-        mc("cp", "s2/test-minio-bin/small", f.name)
-        assert f.read() == SMALL_FILE
-
-    with tempfile.NamedTemporaryFile() as f:
-        mc("cp", "s2/test-minio-bin/large", f.name)
-        assert f.read() == LARGE_FILE
-
+    download_file(SMALL_FILE, lambda name: mc("cp", "s2/test-minio-bin/small", name))
+    download_file(LARGE_FILE, lambda name: mc("cp", "s2/test-minio-bin/large", name))
     mc("rm", "s2/test-minio-bin/small")
     mc("rm", "s2/test-minio-bin/large")
     mc("rb", "s2/test-minio-bin")
+
+@skip_if_no_bin("aws")
+def test_aws_bin():
+    def aws(*args):
+        proc = subprocess.run(["aws", "s3", *args, "--endpoint", ADDRESS], check=True, stdout=subprocess.PIPE, env={
+            "PATH": os.environ["PATH"],
+            "AWS_ACCESS_KEY_ID": ACCESS_KEY,
+            "AWS_SECRET_ACCESS_KEY": SECRET_KEY,
+        })
+        return proc.stdout.decode("utf8")
+
+    aws("mb", "s3://test-aws-bin")
+    upload_file(SMALL_FILE, lambda name: aws("cp", name, "s3://test-aws-bin/small"))
+    upload_file(LARGE_FILE, lambda name: aws("cp", name, "s3://test-aws-bin/large"))
+    aws("ls", "s3://test-aws-bin")
+    download_file(SMALL_FILE, lambda name: aws("cp", "s3://test-aws-bin/small", name))
+    download_file(LARGE_FILE, lambda name: aws("cp", "s3://test-aws-bin/large", name))
+    aws("rm", "s3://test-aws-bin/small")
+    aws("rm", "s3://test-aws-bin/large")
+    aws("rb", "s3://test-aws-bin")
