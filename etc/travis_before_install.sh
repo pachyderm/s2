@@ -13,3 +13,9 @@ pushd ./conformance/s3-tests
     source virtualenv/bin/activate
     pip install nose-exclude==0.5.0
 popd
+
+pushd ~
+    curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+    unzip awscliv2.zip
+    sudo ./aws/install
+popd

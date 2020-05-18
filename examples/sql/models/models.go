@@ -19,7 +19,7 @@ var (
 		DisplayName: "s2 demo",
 	}
 
-	Epoch = time.Unix(0, 0)
+	Epoch = time.Now()
 
 	StorageClass = "STANDARD"
 

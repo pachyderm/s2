@@ -18,15 +18,36 @@ s3 libs/bins have subtlety different behavior, but the conformance tests only
 check corner cases with boto3.
 """
 
-from io import BytesIO
 import os
+import shutil
+import tempfile
+import subprocess
+from io import BytesIO
 from urllib.parse import urlparse
 
 import boto3
 import minio
+import pytest
 
 def create_file(size):
     return b"x" * size
+
+def upload_file(contents, cb):
+    with tempfile.NamedTemporaryFile() as f:
+        f.write(contents)
+        f.flush()
+        cb(f.name)
+
+def download_file(contents, cb):
+    tmp = tempfile.NamedTemporaryFile(delete=False)
+    tmp.close()
+
+    cb(tmp.name)
+    
+    with open(tmp.name, "rb") as f:
+        assert f.read() == contents
+
+    os.remove(tmp.name)
 
 ADDRESS = os.environ["S3_ADDRESS"]
 ACCESS_KEY = os.environ["S3_ACCESS_KEY"]
@@ -34,6 +55,10 @@ SECRET_KEY = os.environ["S3_SECRET_KEY"]
 
 SMALL_FILE = create_file(1)
 LARGE_FILE = create_file(65*1024*1024)
+
+def skip_if_no_bin(name):
+    test = shutil.which(name) == None
+    return pytest.mark.skipif(test, reason="executable '{}' is not available".format(name))
 
 def test_boto_lib():
     client = boto3.client(
@@ -85,3 +110,23 @@ def test_minio_lib():
     client.remove_object("test-minio-lib", "large")
 
     client.remove_bucket("test-minio-lib")
+
+@skip_if_no_bin("aws")
+def test_aws_bin():
+    def aws(*args):
+        proc = subprocess.run(["aws", "s3", *args, "--endpoint", ADDRESS], check=True, stdout=subprocess.PIPE, env={
+            "PATH": os.environ["PATH"],
+            "AWS_ACCESS_KEY_ID": ACCESS_KEY,
+            "AWS_SECRET_ACCESS_KEY": SECRET_KEY,
+        })
+        return proc.stdout.decode("utf8")
+
+    aws("mb", "s3://test-aws-bin")
+    upload_file(SMALL_FILE, lambda name: aws("cp", name, "s3://test-aws-bin/small"))
+    upload_file(LARGE_FILE, lambda name: aws("cp", name, "s3://test-aws-bin/large"))
+    aws("ls", "s3://test-aws-bin")
+    download_file(SMALL_FILE, lambda name: aws("cp", "s3://test-aws-bin/small", name))
+    download_file(LARGE_FILE, lambda name: aws("cp", "s3://test-aws-bin/large", name))
+    aws("rm", "s3://test-aws-bin/small")
+    aws("rm", "s3://test-aws-bin/large")
+    aws("rb", "s3://test-aws-bin")
