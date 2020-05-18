@@ -129,7 +129,7 @@ def print_failures(runs_dir):
             print("- {}".format(failing_test))
 
 def main():
-    parser = argparse.ArgumentParser(description="Runs a conformance test suite.")
+    parser = argparse.ArgumentParser(description="Runs the s2 conformance test suite.")
     parser.add_argument("--no-run", default=False, action="store_true", help="Disables a test run, and just prints failure data from the last test run")
     parser.add_argument("--test", default="", help="Run a specific test")
     parser.add_argument("--s3tests-config", required=True, help="Path to the s3-tests config file")
