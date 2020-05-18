@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import os
+import sys
 import argparse
 import subprocess
 from urllib.parse import urlparse
@@ -15,6 +16,7 @@ def main():
     parser.add_argument("--secret-key", help="Secret key")
     args = parser.parse_args()
 
+    # Create some sample data if it doesn't exist yet
     if not os.path.exists(TESTDATA):
         os.makedirs(TESTDATA)
         with open(os.path.join(TESTDATA, "small.txt"), "w") as f:
@@ -32,12 +34,14 @@ def main():
     env["S2_SECRET_KEY"] = args.secret_key
 
     def run(cwd, *args):
-        print(os.path.join(ROOT, cwd))
         subprocess.run(args, cwd=os.path.join(ROOT, cwd), env=env, check=True)
 
-    run("python", os.path.join("venv", "bin", "pytest"), "test.py")
-    run("cli", "bash", "test.sh")
-    # run("go", "go", "test", "./...")
+    try:
+        run("python", os.path.join("venv", "bin", "pytest"), "test.py")
+        run("go", "go", "test", "./...")
+        run("cli", "bash", "test.sh")
+    except subprocess.CalledProcessError:
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
