@@ -45,7 +45,7 @@ def download_file(contents, cb):
     cb(tmp.name)
     
     with open(tmp.name, "rb") as f:
-        assert f.read() == contents
+        assert f.read() == contents, tmp.name
 
     os.remove(tmp.name)
 
