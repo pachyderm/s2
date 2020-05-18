@@ -38,7 +38,7 @@ def main():
 
     try:
         run("python", os.path.join("venv", "bin", "pytest"), "test.py")
-        run("go", "go", "test", "./...")
+        run("go", "go", "test", "-count=1", "./...")
         run("cli", "bash", "test.sh")
     except subprocess.CalledProcessError:
         sys.exit(1)
