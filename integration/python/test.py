@@ -51,21 +51,21 @@ def test_minio_lib():
         secure=url.scheme == "https",
     )
 
-    client.make_bucket("test-minio-lib")
+    client.make_bucket("test-minio-python-lib")
 
     with open("../testdata/small.txt", "rb") as f:
-        client.put_object("test-minio-lib", "small", f, 1)
+        client.put_object("test-minio-python-lib", "small", f, 1)
     with open("../testdata/large.txt", "rb") as f:
-        client.put_object("test-minio-lib", "large", f, 65*1024*1024)
+        client.put_object("test-minio-python-lib", "large", f, 65*1024*1024)
 
-    res = client.list_objects_v2("test-minio-lib")
+    res = client.list_objects_v2("test-minio-python-lib")
     assert set((o.object_name, o.size) for o in res) == EXPECTED_KEYS
 
     with open("../testdata/small.txt", "rb") as f:
-        assert client.get_object("test-minio-lib", "small").read() == f.read()
+        assert client.get_object("test-minio-python-lib", "small").read() == f.read()
     with open("../testdata/large.txt", "rb") as f:
-        assert client.get_object("test-minio-lib", "large").read() == f.read()
+        assert client.get_object("test-minio-python-lib", "large").read() == f.read()
 
-    client.remove_object("test-minio-lib", "small")
-    client.remove_object("test-minio-lib", "large")
-    client.remove_bucket("test-minio-lib")
+    client.remove_object("test-minio-python-lib", "small")
+    client.remove_object("test-minio-python-lib", "large")
+    client.remove_bucket("test-minio-python-lib")
