@@ -1,16 +1,16 @@
 package s2
 
 import (
+	"bufio"
+	"crypto/sha256"
 	"encoding/xml"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
-	"crypto/sha256"
-	"time"
 	"regexp"
-	"bufio"
-	"fmt"
 	"strconv"
-	"errors"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
@@ -28,27 +28,28 @@ var (
 
 // Reads a multi-chunk upload body
 type chunkedReader struct {
-	body io.ReadCloser
+	body      io.ReadCloser
 	lastChunk []byte
-	bufBody *bufio.Reader
-	
-	signingKey []byte
+	bufBody   *bufio.Reader
+
+	signingKey    []byte
 	lastSignature string
-	timestamp string
-	date string
-	region string
+	timestamp     string
+	date          string
+	region        string
 }
 
 func newChunkedReader(body io.ReadCloser, signingKey []byte, seedSignature, timestamp, date, region string) *chunkedReader {
-	return &chunkedReader {
-		body: body,
+	return &chunkedReader{
+		body:      body,
 		lastChunk: nil,
-		bufBody: bufio.NewReader(body),
+		bufBody:   bufio.NewReader(body),
 
+		signingKey:    signingKey,
 		lastSignature: seedSignature,
-		timestamp: timestamp,
-		date: date,
-		region: region,
+		timestamp:     timestamp,
+		date:          date,
+		region:        region,
 	}
 }
 
@@ -100,17 +101,24 @@ func (c *chunkedReader) readChunk() error {
 		return InvalidChunk
 	}
 
-	// step 3: construct the string to sign
+	// step 3: read the trailer
+	trailer := make([]byte, 2)
+	_, err = io.ReadFull(c.bufBody, trailer)
+	if err != nil || trailer[0] != '\r' || trailer[1] != '\n' {
+		return InvalidChunk
+	}
+
+	// step 4: construct the string to sign
 	stringToSign := fmt.Sprintf(
-		"AWS-HMAC-SHA256-PAYLOAD\n%s\n%s/%s/s3/aws4_request\n%s\ne3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\n%x",
+		"AWS4-HMAC-SHA256-PAYLOAD\n%s\n%s/%s/s3/aws4_request\n%s\ne3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\n%x",
 		c.timestamp,
 		c.date,
 		c.region,
-		c.lastSignature,
-		sha256.Sum256(chunk),
+		c.lastSignature,      // TODO: not the same
+		sha256.Sum256(chunk), // TODO: not the same
 	)
 
-	// step 4: calculate & verify the signature
+	// step 5: calculate & verify the signature
 	signature := hmacSHA256(c.signingKey, stringToSign)
 	if chunkSignature != fmt.Sprintf("%x", signature) {
 		return InvalidChunk
