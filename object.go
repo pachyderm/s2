@@ -114,8 +114,8 @@ func (c *chunkedReader) readChunk() error {
 		c.timestamp,
 		c.date,
 		c.region,
-		c.lastSignature,      // TODO: not the same
-		sha256.Sum256(chunk), // TODO: not the same
+		c.lastSignature,
+		sha256.Sum256(chunk),
 	)
 
 	// step 5: calculate & verify the signature
