@@ -4,7 +4,7 @@
 
 *"It's one less than s3"*
 
-This library facilitates the creation of servers with [S3-like APIs](https://docs.aws.amazon.com/AmazonS3/latest/API/Welcome.html) in go. With this library, you just need to implement a few interfaces to create an S3-like API - s2 handles all of the glue code and edge cases. Additionally, we provide a test runner that builds off of ceph's excellent [s3 compatibility tests](https://github.com/ceph/s3-tests) to provide fairly complete conformance tests with the s3 API.
+This library facilitates the creation of servers with [S3-like APIs](https://docs.aws.amazon.com/AmazonS3/latest/API/Welcome.html) in go. With this library, you just need to implement a few interfaces to create an S3-like API - s2 handles all of the glue code and edge cases. Additionally, we provide a fairly extensive suite of conformance and integration tests to ensure your implementation works with the most popular s3 libraries and executables.
 
 See a complete example in the [example directory.](./example)
 
