@@ -19,18 +19,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-const (
-	// awsTimeFormat specifies the time format used in AWS requests
-	awsTimeFormat = "20060102T150405Z"
-	// skewTime specifies the maximum delta between the current time and the
-	// time specified in the HTTP request
-	skewTime = 15 * time.Minute
-)
-
 var (
-	// unixEpoch represents the unix epoch time (Jan 1 1970)
-	unixEpoch = time.Unix(0, 0)
-
 	// bucketNameValidator is a regex for validating bucket names
 	bucketNameValidator = regexp.MustCompile(`^/[a-zA-Z0-9\-_\.]{1,255}/`)
 	// authV2HeaderValidator is a regex for validating the authorization
@@ -38,7 +27,7 @@ var (
 	authV2HeaderValidator = regexp.MustCompile(`^AWS ([^:]*):(.*)$`)
 	// authV4HeaderValidator is a regex for validating the authorization
 	// header when using AWs' auth V4
-	authV4HeaderValidator = regexp.MustCompile(`^AWS4-HMAC-SHA256 Credential=([^/]*)/([^/]*)/([^/]*)/s3/aws4_request, SignedHeaders=([^,]+), Signature=(.+)$`)
+	authV4HeaderValidator = regexp.MustCompile(`^AWS4-HMAC-SHA256 Credential=([^/]*)/([^/]*)/([^/]*)/s3/aws4_request, ?SignedHeaders=([^,]+), ?Signature=(.+)$`)
 
 	// subresourceQueryParams is a list of query parameters that are
 	// considered queries for "subresources" in S3. This is used in
@@ -115,40 +104,6 @@ func attachObjectRoutes(logger *logrus.Entry, router *mux.Router, handler *objec
 	router.Methods("GET", "HEAD").HandlerFunc(handler.get)
 	router.Methods("PUT").HandlerFunc(handler.put)
 	router.Methods("DELETE").HandlerFunc(handler.del)
-}
-
-//  parseTimestamp parses a timestamp value that is formatted in any of the
-// following:
-// 1) as AWS' custom format (e.g. 20060102T150405Z)
-// 2) as RFC1123
-// 3) as RFC1123Z
-func parseTimestamp(r *http.Request) (time.Time, error) {
-	timestampStr := r.Header.Get("x-amz-date")
-	if timestampStr == "" {
-		timestampStr = r.Header.Get("date")
-	}
-
-	timestamp, err := time.Parse(time.RFC1123, timestampStr)
-	if err != nil {
-		timestamp, err = time.Parse(time.RFC1123Z, timestampStr)
-		if err != nil {
-			timestamp, err = time.Parse(awsTimeFormat, timestampStr)
-			if err != nil {
-				return time.Time{}, AccessDeniedError(r)
-			}
-		}
-	}
-
-	if !timestamp.After(unixEpoch) {
-		return time.Time{}, AccessDeniedError(r)
-	}
-
-	now := time.Now()
-	if !timestamp.After(now.Add(-skewTime)) || timestamp.After(now.Add(skewTime)) {
-		return time.Time{}, RequestTimeTooSkewedError(r)
-	}
-
-	return timestamp, nil
 }
 
 // S2 is the root struct used in the s2 library
@@ -244,26 +199,28 @@ func (h *S2) authV4(w http.ResponseWriter, r *http.Request, auth string) error {
 		r.Header.Get("x-amz-content-sha256"),
 	}, "\n")
 
-	timestamp, err := parseTimestamp(r)
+	timestamp, err := parseAWSTimestamp(r)
 	if err != nil {
 		return err
 	}
+	formattedTimestamp := formatAWSTimestamp(timestamp)
 
+	// step 2: construct the string to sign
 	stringToSign := fmt.Sprintf(
 		"AWS4-HMAC-SHA256\n%s\n%s/%s/s3/aws4_request\n%x",
-		timestamp.Format(awsTimeFormat),
+		formattedTimestamp,
 		date,
 		region,
 		sha256.Sum256([]byte(canonicalRequest)),
 	)
 
-	// step 2: construct the string to sign
+	// step 3: calculate the signing key
 	dateKey := hmacSHA256([]byte("AWS4"+*secretKey), date)
 	dateRegionKey := hmacSHA256(dateKey, region)
 	dateRegionServiceKey := hmacSHA256(dateRegionKey, "s3")
 	signingKey := hmacSHA256(dateRegionServiceKey, "aws4_request")
 
-	// step 3: construct & verify the signature
+	// step 4: construct & verify the signature
 	signature := hmacSHA256(signingKey, stringToSign)
 
 	if expectedSignature != fmt.Sprintf("%x", signature) {
@@ -274,6 +231,15 @@ func (h *S2) authV4(w http.ResponseWriter, r *http.Request, auth string) error {
 	vars["authMethod"] = "v4"
 	vars["authAccessKey"] = accessKey
 	vars["authRegion"] = region
+	// store signature data as vars, since it may be reused for verifying chunked uploads
+	vars["authSignature"] = expectedSignature
+	// This is a bit unfortunate -- `vars` can only store string values, so we need to
+	// convert the bytes to a string. Note that this string may not be valid,
+	// i.e. it may contain non-utf8 sequences.
+	vars["authSignatureKey"] = string(signingKey)
+	vars["authSignatureTimestamp"] = formattedTimestamp
+	vars["authSignatureDate"] = date
+	vars["authSignatureRegion"] = region
 	return nil
 }
 
@@ -297,7 +263,7 @@ func (h *S2) authV2(w http.ResponseWriter, r *http.Request, auth string) error {
 		return InvalidAccessKeyIDError(r)
 	}
 
-	timestamp, err := parseTimestamp(r)
+	timestamp, err := parseAWSTimestamp(r)
 	if err != nil {
 		return err
 	}

@@ -4,6 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha1"
 	"crypto/sha256"
+	"time"
 	"encoding/xml"
 	"fmt"
 	"io/ioutil"
@@ -14,6 +15,19 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
+)
+
+const (
+	// awsTimeFormat specifies the time format used in AWS requests
+	awsTimeFormat = "20060102T150405Z"
+	// skewTime specifies the maximum delta between the current time and the
+	// time specified in the HTTP request
+	skewTime = 15 * time.Minute
+)
+
+var (
+	// unixEpoch represents the unix epoch time (Jan 1 1970)
+	unixEpoch = time.Unix(0, 0)
 )
 
 // WriteError serializes an error to a response as XML
@@ -206,4 +220,42 @@ func readXMLBody(r *http.Request, payload interface{}) error {
 		return MalformedXMLError(r)
 	}
 	return nil
+}
+
+func formatAWSTimestamp(t time.Time) string {
+	return t.Format(awsTimeFormat)
+}
+
+//  parseTimestamp parses a timestamp value that is formatted in any of the
+// following:
+// 1) as AWS' custom format (e.g. 20060102T150405Z)
+// 2) as RFC1123
+// 3) as RFC1123Z
+func parseAWSTimestamp(r *http.Request) (time.Time, error) {
+	timestampStr := r.Header.Get("x-amz-date")
+	if timestampStr == "" {
+		timestampStr = r.Header.Get("date")
+	}
+
+	timestamp, err := time.Parse(time.RFC1123, timestampStr)
+	if err != nil {
+		timestamp, err = time.Parse(time.RFC1123Z, timestampStr)
+		if err != nil {
+			timestamp, err = time.Parse(awsTimeFormat, timestampStr)
+			if err != nil {
+				return time.Time{}, AccessDeniedError(r)
+			}
+		}
+	}
+
+	if !timestamp.After(unixEpoch) {
+		return time.Time{}, AccessDeniedError(r)
+	}
+
+	now := time.Now()
+	if !timestamp.After(now.Add(-skewTime)) || timestamp.After(now.Add(skewTime)) {
+		return time.Time{}, RequestTimeTooSkewedError(r)
+	}
+
+	return timestamp, nil
 }
