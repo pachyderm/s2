@@ -21,3 +21,6 @@ before_cache:
 cache:
   directories:
   - $${GOPATH}/pkg
+
+after_failure:
+  - cat stderr.txt
