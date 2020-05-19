@@ -3,6 +3,9 @@ language: go
 go:
   - "1.13.1"
 
+env:
+  - PATH=~/bin:$PATH
+
 # workaround for travis not handling ssh git urls well:
 # https://stackoverflow.com/a/24600210/202309
 git:
