@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 
 import os
-from urllib.parse import urlparse
 
 import boto3
 import minio
 
 ADDRESS = os.environ["S2_HOST_ADDRESS"]
+NETLOC = os.environ["S2_HOST_NETLOC"]
+SCHEME = os.environ["S2_HOST_SCHEME"]
 ACCESS_KEY = os.environ["S2_ACCESS_KEY"]
 SECRET_KEY = os.environ["S2_SECRET_KEY"]
 
@@ -43,12 +44,11 @@ def test_boto_lib():
     client.delete_bucket(Bucket="test-boto-lib")
 
 def test_minio_lib():
-    url = urlparse(ADDRESS)
     client = minio.Minio(
-        url.netloc,
+        NETLOC,
         access_key=ACCESS_KEY,
         secret_key=SECRET_KEY,
-        secure=url.scheme == "https",
+        secure=SCHEME == "https",
     )
 
     client.make_bucket("test-minio-python-lib")
