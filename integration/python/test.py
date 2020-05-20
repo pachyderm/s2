@@ -25,7 +25,6 @@ def test_boto_lib():
     )
 
     client.create_bucket(Bucket="test-boto-lib")
-    assert [b["Name"] for b in client.list_buckets()["Buckets"]] == ["test-boto-lib"]
 
     client.upload_file("../testdata/small.txt", "test-boto-lib", "small")
     client.upload_file("../testdata/large.txt", "test-boto-lib", "large")
