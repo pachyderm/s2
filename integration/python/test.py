@@ -4,6 +4,7 @@ import os
 
 import boto3
 import minio
+import urllib3
 
 ADDRESS = os.environ["S2_HOST_ADDRESS"]
 NETLOC = os.environ["S2_HOST_NETLOC"]
@@ -43,11 +44,17 @@ def test_boto_lib():
     client.delete_bucket(Bucket="test-boto-lib")
 
 def test_minio_lib():
+    pool_manager = urllib3.PoolManager(
+        timeout=30.0,
+        retries=urllib3.Retry(total=1),
+    )
+
     client = minio.Minio(
         NETLOC,
         access_key=ACCESS_KEY,
         secret_key=SECRET_KEY,
         secure=SCHEME == "https",
+        http_client=pool_manager,
     )
 
     client.make_bucket("test-minio-python-lib")
