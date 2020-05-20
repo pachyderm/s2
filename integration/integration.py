@@ -12,9 +12,19 @@ TESTDATA = os.path.join(ROOT, "testdata")
 def main():
     parser = argparse.ArgumentParser(description="Runs the s2 integration test suite.")
     parser.add_argument("address", help="Address of the s2 instance")
-    parser.add_argument("--access-key", help="Access key")
-    parser.add_argument("--secret-key", help="Secret key")
+    parser.add_argument("--access-key", default="", help="Access key")
+    parser.add_argument("--secret-key", default="", help="Secret key")
+    parser.add_argument("--test", default=None, help="Run a specific test")
     args = parser.parse_args()
+
+    suite_filter = None
+    test_filter = None
+    if args.test is not None:
+        parts = args.test.split(":", maxsplit=1)
+        if len(parts) == 1:
+            suite_filter = parts[0]
+        else:
+            suite_filter, test_filter = parts
 
     # Create some sample data if it doesn't exist yet
     if not os.path.exists(TESTDATA):
@@ -37,9 +47,17 @@ def main():
         subprocess.run(args, cwd=os.path.join(ROOT, cwd), env=env, check=True)
 
     try:
-        run("python", os.path.join("venv", "bin", "pytest"), "test.py")
-        run("go", "go", "test", "-count=1", "./...")
-        run("cli", "bash", "test.sh")
+        if suite_filter is None or suite_filter == "python":
+            args = ["-k", test_filter] if test_filter is not None else []
+            run("python", os.path.join("venv", "bin", "pytest"), "test.py", *args)
+        if suite_filter is None or suite_filter == "go":
+            args = ["-count=1"]
+            if test_filter is not None:
+                args.append("-run={}".format(test_filter))
+            args.append("./...")
+            run("go", "go", "test", *args)
+        if suite_filter is None or suite_filter == "cli":
+            run("cli", "bash", "test.sh")
     except subprocess.CalledProcessError:
         sys.exit(1)
 
