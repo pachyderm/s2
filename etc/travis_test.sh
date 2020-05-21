@@ -2,8 +2,6 @@
 
 set -e
 
-make ./conformance/s3-tests
-
 pushd examples/sql
     make run 2> stderr.txt &
 
@@ -12,5 +10,5 @@ pushd examples/sql
         sleep 1
     done
 
-    make test
+    make integration-test
 popd
