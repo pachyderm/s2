@@ -7,7 +7,7 @@ sudo apt-get update
 sudo apt-get -y install python2.7 python-virtualenv
 
 sed -i 's/git@github.com:/https:\/\/github.com\//' .gitmodules
-make ./conformance/s3-tests
+make ./conformance/s3-tests ./integration/python/venv
 
 pushd ~
     mkdir -p bin
