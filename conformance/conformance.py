@@ -71,17 +71,14 @@ def run_nosetests(config, test=None, env=None, stderr=None):
         print("config file does not exist: {}".format(config), file=sys.stderr)
         sys.exit(1)
 
-    all_env = dict(os.environ)
-    all_env["S3TEST_CONF"] = config
-    if env is not None:
-        all_env.update(env)
+    args = [
+        "docker", "run",
+        "-e", "S3TEST_CONF={}".format(config),
+        "pachyderm/s2-conformance", "nosetests",
+        "-a", ",".join("!{}".format(a) for a in BLACKLISTED_ATTRIBUTES)
+    ]
 
-    pwd = os.path.join(ROOT, "s3-tests")
-    args = [os.path.join("virtualenv", "bin", "nosetests"), "-a", ",".join("!{}".format(a) for a in BLACKLISTED_ATTRIBUTES)]
-    if test is not None:
-        args.append(test)
-
-    proc = subprocess.run(args, env=all_env, cwd=pwd, stderr=stderr)
+    proc = subprocess.run(args, stderr=stderr)
     print("Test run exited with {}".format(proc.returncode))
 
 def print_failures(runs_dir):
