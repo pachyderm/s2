@@ -2,8 +2,6 @@
 
 set -e
 
-make ./conformance/s3-tests
-
 pushd examples/sql
     make run 2> stderr.txt &
 

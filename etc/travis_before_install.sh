@@ -2,17 +2,12 @@
 
 set -ex
 
+sudo add-apt-repository -y ppa:deadsnakes/ppa
 sudo apt-get update
-sudo apt-get -y install python-virtualenv
+sudo apt-get -y install python2.7 python-virtualenv
 
 sed -i 's/git@github.com:/https:\/\/github.com\//' .gitmodules
-git submodule update --init --recursive
-
-pushd ./conformance/s3-tests
-    ./bootstrap
-    source virtualenv/bin/activate
-    pip install nose-exclude==0.5.0
-popd
+make ./conformance/s3-tests
 
 pushd ~
     mkdir -p bin
