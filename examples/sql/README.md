@@ -4,4 +4,4 @@ This example builds off of s2 and [gorm](http://gorm.io/) to provide an S3-like 
 
 ## Tests
 
-To run tests, start the server with `make run`. Then, in a separate shell, run `make test`. After the tests complete, stats will be printed out regarding which tests failed. Complete logs are available in `test/runs`.
+To run tests, start the server with `make run`. Then, in a separate shell, run `make test`.

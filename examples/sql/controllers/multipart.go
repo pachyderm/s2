@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -15,7 +16,7 @@ func (c *Controller) ListMultipart(r *http.Request, name, keyMarker, uploadIDMar
 	c.logger.Tracef("ListMultipart: name=%+v, keyMarker=%+v, uploadIDMarker=%+v, maxUploads=%+v", name, keyMarker, uploadIDMarker, maxUploads)
 
 	result := s2.ListMultipartResult{
-		Uploads: []s2.Upload{},
+		Uploads: []*s2.Upload{},
 	}
 
 	err := c.transaction(func(tx *gorm.DB) error {
@@ -40,7 +41,7 @@ func (c *Controller) ListMultipart(r *http.Request, name, keyMarker, uploadIDMar
 				break
 			}
 
-			result.Uploads = append(result.Uploads, s2.Upload{
+			result.Uploads = append(result.Uploads, &s2.Upload{
 				Key:          upload.Key,
 				UploadID:     upload.ID,
 				Initiator:    models.GlobalUser,
@@ -105,7 +106,7 @@ func (c *Controller) AbortMultipart(r *http.Request, name, key, uploadID string)
 	})
 }
 
-func (c *Controller) CompleteMultipart(r *http.Request, name, key, uploadID string, parts []s2.Part) (*s2.CompleteMultipartResult, error) {
+func (c *Controller) CompleteMultipart(r *http.Request, name, key, uploadID string, parts []*s2.Part) (*s2.CompleteMultipartResult, error) {
 	c.logger.Tracef("CompleteMultipart: name=%+v, key=%+v, uploadID=%+v, parts=%+v", name, key, uploadID, parts)
 
 	result := s2.CompleteMultipartResult{
@@ -139,7 +140,7 @@ func (c *Controller) CompleteMultipart(r *http.Request, name, key, uploadID stri
 				}
 				return err
 			}
-			if uploadPart.ETag != part.ETag {
+			if fmt.Sprintf("\"%s\"", uploadPart.ETag) != part.ETag {
 				return s2.InvalidPartError(r)
 			}
 			// each part, except for the last, is expected to be at least 5mb in
@@ -181,7 +182,7 @@ func (c *Controller) ListMultipartChunks(r *http.Request, name, key, uploadID st
 		Initiator:    &models.GlobalUser,
 		Owner:        &models.GlobalUser,
 		StorageClass: models.StorageClass,
-		Parts:        []s2.Part{},
+		Parts:        []*s2.Part{},
 	}
 
 	err := c.transaction(func(tx *gorm.DB) error {
@@ -206,7 +207,7 @@ func (c *Controller) ListMultipartChunks(r *http.Request, name, key, uploadID st
 				break
 			}
 
-			result.Parts = append(result.Parts, s2.Part{
+			result.Parts = append(result.Parts, &s2.Part{
 				PartNumber: uploadPart.Number,
 				ETag:       uploadPart.ETag,
 			})

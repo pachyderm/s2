@@ -18,11 +18,11 @@ type Bucket struct {
 
 // ListBucketsResult is a response from a ListBucket call
 type ListBucketsResult struct {
-	XMLName xml.Name `xml:"ListAllMyBucketsResult"`
+	XMLName xml.Name `xml:"http://s3.amazonaws.com/doc/2006-03-01/ ListAllMyBucketsResult"`
 	// Owner is the owner of the buckets
 	Owner *User `xml:"Owner"`
 	// Buckets are a list of buckets under the given owner
-	Buckets []Bucket `xml:"Buckets>Bucket"`
+	Buckets []*Bucket `xml:"Buckets>Bucket"`
 }
 
 // ServiceController is an interface defining service-level functionality
@@ -49,6 +49,12 @@ func (h *serviceHandler) get(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		WriteError(h.logger, w, r, err)
 		return
+	}
+
+	// some clients (e.g. minio-python) can't handle sub-seconds in datetime
+	// output
+	for _, bucket := range result.Buckets {
+		bucket.CreationDate = bucket.CreationDate.UTC().Round(time.Second)
 	}
 
 	writeXML(h.logger, w, r, http.StatusOK, result)

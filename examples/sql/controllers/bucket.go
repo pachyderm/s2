@@ -22,8 +22,8 @@ func (c *Controller) ListObjects(r *http.Request, name, prefix, marker, delimite
 	c.logger.Tracef("ListObjects: name=%+v, prefix=%+v, marker=%+v, delimiter=%+v, maxKeys=%+v", name, prefix, marker, delimiter, maxKeys)
 
 	result := s2.ListObjectsResult{
-		Contents:       []s2.Contents{},
-		CommonPrefixes: []s2.CommonPrefixes{},
+		Contents:       []*s2.Contents{},
+		CommonPrefixes: []*s2.CommonPrefixes{},
 	}
 
 	err := c.transaction(func(tx *gorm.DB) error {
@@ -76,7 +76,7 @@ func (c *Controller) ListObjects(r *http.Request, name, prefix, marker, delimite
 				break
 			}
 
-			result.Contents = append(result.Contents, s2.Contents{
+			result.Contents = append(result.Contents, &s2.Contents{
 				Key:          latestObject.Key,
 				LastModified: models.Epoch,
 				ETag:         latestObject.ETag,
@@ -96,8 +96,8 @@ func (c *Controller) ListObjectVersions(r *http.Request, name, prefix, keyMarker
 	c.logger.Tracef("ListObjectVersions: name=%+v, prefix=%+v, keyMarker=%+v, versionMarker=%+v, delimiter=%+v, maxKeys=%+v", name, prefix, keyMarker, versionMarker, delimiter, maxKeys)
 
 	result := s2.ListObjectVersionsResult{
-		Versions:      []s2.Version{},
-		DeleteMarkers: []s2.DeleteMarker{},
+		Versions:      []*s2.Version{},
+		DeleteMarkers: []*s2.DeleteMarker{},
 	}
 
 	err := c.transaction(func(tx *gorm.DB) error {
@@ -137,7 +137,7 @@ func (c *Controller) ListObjectVersions(r *http.Request, name, prefix, keyMarker
 			}
 
 			if object.DeleteMarker {
-				result.DeleteMarkers = append(result.DeleteMarkers, s2.DeleteMarker{
+				result.DeleteMarkers = append(result.DeleteMarkers, &s2.DeleteMarker{
 					Key:          object.Key,
 					Version:      object.Version,
 					IsLatest:     latestObject.ID == object.ID,
@@ -145,7 +145,7 @@ func (c *Controller) ListObjectVersions(r *http.Request, name, prefix, keyMarker
 					Owner:        models.GlobalUser,
 				})
 			} else {
-				result.Versions = append(result.Versions, s2.Version{
+				result.Versions = append(result.Versions, &s2.Version{
 					Key:          object.Key,
 					Version:      object.Version,
 					IsLatest:     latestObject.ID == object.ID,

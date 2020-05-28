@@ -60,7 +60,7 @@ type ListMultipartResult struct {
 	// IsTruncated specifies whether this is the end of the list or not
 	IsTruncated bool
 	// Uploads are the list of uploads returned
-	Uploads []Upload
+	Uploads []*Upload
 }
 
 // CompleteMultipartResult is a response from a CompleteMultipart call
@@ -86,7 +86,7 @@ type ListMultipartChunksResult struct {
 	// IsTruncated specifies whether this is the end of the list or not
 	IsTruncated bool
 	// Parts are the list of parts returned
-	Parts []Part
+	Parts []*Part
 }
 
 // MultipartController is an interface that specifies multipart-related
@@ -99,7 +99,7 @@ type MultipartController interface {
 	// AbortMultipart aborts an in-progress multipart upload
 	AbortMultipart(r *http.Request, bucket, key, uploadID string) error
 	// CompleteMultipart finishes a multipart upload
-	CompleteMultipart(r *http.Request, bucket, key, uploadID string, parts []Part) (*CompleteMultipartResult, error)
+	CompleteMultipart(r *http.Request, bucket, key, uploadID string, parts []*Part) (*CompleteMultipartResult, error)
 	// ListMultipartChunks lists the constituent chunks of an in-progress
 	// multipart upload
 	ListMultipartChunks(r *http.Request, bucket, key, uploadID string, partNumberMarker, maxParts int) (*ListMultipartChunksResult, error)
@@ -123,7 +123,7 @@ func (c unimplementedMultipartController) AbortMultipart(r *http.Request, bucket
 	return NotImplementedError(r)
 }
 
-func (c unimplementedMultipartController) CompleteMultipart(r *http.Request, bucket, key, uploadID string, parts []Part) (*CompleteMultipartResult, error) {
+func (c unimplementedMultipartController) CompleteMultipart(r *http.Request, bucket, key, uploadID string, parts []*Part) (*CompleteMultipartResult, error) {
 	return nil, NotImplementedError(r)
 }
 
@@ -162,16 +162,22 @@ func (h *multipartHandler) list(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// some clients (e.g. minio-python) can't handle sub-seconds in datetime
+	// output
+	for _, upload := range result.Uploads {
+		upload.Initiated = upload.Initiated.UTC().Round(time.Second)
+	}
+
 	marshallable := struct {
-		XMLName            xml.Name `xml:"ListMultipartUploadsResult"`
-		Bucket             string   `xml:"Bucket"`
-		KeyMarker          string   `xml:"KeyMarker"`
-		UploadIDMarker     string   `xml:"UploadIdMarker"`
-		NextKeyMarker      string   `xml:"NextKeyMarker"`
-		NextUploadIDMarker string   `xml:"NextUploadIdMarker"`
-		MaxUploads         int      `xml:"MaxUploads"`
-		IsTruncated        bool     `xml:"IsTruncated"`
-		Uploads            []Upload `xml:"Upload"`
+		XMLName            xml.Name  `xml:"http://s3.amazonaws.com/doc/2006-03-01/ ListMultipartUploadsResult"`
+		Bucket             string    `xml:"Bucket"`
+		KeyMarker          string    `xml:"KeyMarker"`
+		UploadIDMarker     string    `xml:"UploadIdMarker"`
+		NextKeyMarker      string    `xml:"NextKeyMarker"`
+		NextUploadIDMarker string    `xml:"NextUploadIdMarker"`
+		MaxUploads         int       `xml:"MaxUploads"`
+		IsTruncated        bool      `xml:"IsTruncated"`
+		Uploads            []*Upload `xml:"Upload"`
 	}{
 		Bucket:         bucket,
 		KeyMarker:      keyMarker,
@@ -227,7 +233,7 @@ func (h *multipartHandler) listChunks(w http.ResponseWriter, r *http.Request) {
 	}
 
 	marshallable := struct {
-		XMLName              xml.Name `xml:"ListPartsResult"`
+		XMLName              xml.Name `xml:"http://s3.amazonaws.com/doc/2006-03-01/ ListPartsResult"`
 		Bucket               string   `xml:"Bucket"`
 		Key                  string   `xml:"Key"`
 		UploadID             string   `xml:"UploadId"`
@@ -238,7 +244,7 @@ func (h *multipartHandler) listChunks(w http.ResponseWriter, r *http.Request) {
 		NextPartNumberMarker int      `xml:"NextPartNumberMarker"`
 		MaxParts             int      `xml:"MaxParts"`
 		IsTruncated          bool     `xml:"IsTruncated"`
-		Parts                []Part   `xml:"Part"`
+		Parts                []*Part  `xml:"Part"`
 	}{
 		Bucket:           bucket,
 		Key:              key,
@@ -279,7 +285,7 @@ func (h *multipartHandler) init(w http.ResponseWriter, r *http.Request) {
 	}
 
 	marshallable := struct {
-		XMLName  xml.Name `xml:"InitiateMultipartUploadResult"`
+		XMLName  xml.Name `xml:"http://s3.amazonaws.com/doc/2006-03-01/ InitiateMultipartUploadResult"`
 		Bucket   string   `xml:"Bucket"`
 		Key      string   `xml:"Key"`
 		UploadID string   `xml:"UploadId"`
@@ -306,7 +312,7 @@ func (h *multipartHandler) complete(w http.ResponseWriter, r *http.Request) {
 
 	payload := struct {
 		XMLName xml.Name `xml:"CompleteMultipartUpload"`
-		Parts   []Part   `xml:"Part"`
+		Parts   []*Part  `xml:"Part"`
 	}{}
 	if err := readXMLBody(r, &payload); err != nil {
 		WriteError(h.logger, w, r, err)
@@ -357,7 +363,7 @@ func (h *multipartHandler) complete(w http.ResponseWriter, r *http.Request) {
 				}
 			} else {
 				marshallable := struct {
-					XMLName  xml.Name `xml:"CompleteMultipartUploadResult"`
+					XMLName  xml.Name `xml:"http://s3.amazonaws.com/doc/2006-03-01/ CompleteMultipartUploadResult"`
 					Location string   `xml:"Location"`
 					Bucket   string   `xml:"Bucket"`
 					Key      string   `xml:"Key"`
