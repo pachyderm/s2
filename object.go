@@ -111,8 +111,6 @@ func (h *objectHandler) get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: replace with a custom, in-house version of ServeContent that
-	// produces the right S3 XML errors
 	http.ServeContent(w, r, key, result.ModTime, result.Content)
 }
 
