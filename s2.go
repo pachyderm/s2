@@ -50,6 +50,15 @@ var (
 	}
 )
 
+// NotImplementedEndpoint creates an endpoint that returns
+// `NotImplementedError` responses. This can be used in places expecting a
+// `HandlerFunc`, e.g. mux middleware.
+func NotImplementedEndpoint(logger *logrus.Entry) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		WriteError(logger, w, r, NotImplementedError(r))
+	}
+}
+
 // attachBucketRoutes adds bucket-related routes to a router
 func attachBucketRoutes(logger *logrus.Entry, router *mux.Router, handler *bucketHandler, multipartHandler *multipartHandler, objectHandler *objectHandler) {
 	router.Methods("GET", "PUT").Queries("accelerate", "").HandlerFunc(NotImplementedEndpoint(logger))
@@ -94,7 +103,6 @@ func attachObjectRoutes(logger *logrus.Entry, router *mux.Router, handler *objec
 	router.Methods("GET").Queries("torrent", "").HandlerFunc(NotImplementedEndpoint(logger))
 	router.Methods("POST").Queries("restore", "").HandlerFunc(NotImplementedEndpoint(logger))
 	router.Methods("POST").Queries("select", "").HandlerFunc(NotImplementedEndpoint(logger))
-	router.Methods("PUT").Headers("x-amz-copy-source", "").HandlerFunc(NotImplementedEndpoint(logger))
 
 	router.Methods("GET").Queries("uploadId", "").HandlerFunc(multipartHandler.listChunks)
 	router.Methods("POST").Queries("uploads", "").HandlerFunc(multipartHandler.init)
@@ -102,6 +110,7 @@ func attachObjectRoutes(logger *logrus.Entry, router *mux.Router, handler *objec
 	router.Methods("PUT").Queries("uploadId", "").HandlerFunc(multipartHandler.put)
 	router.Methods("DELETE").Queries("uploadId", "").HandlerFunc(multipartHandler.del)
 	router.Methods("GET", "HEAD").HandlerFunc(handler.get)
+	router.Methods("PUT").Headers("x-amz-copy-source", "").HandlerFunc(handler.copy)
 	router.Methods("PUT").HandlerFunc(handler.put)
 	router.Methods("DELETE").HandlerFunc(handler.del)
 }

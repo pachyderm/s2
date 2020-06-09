@@ -194,6 +194,12 @@ func NotImplementedError(r *http.Request) *Error {
 	return NewError(r, http.StatusNotImplemented, "NotImplemented", "This functionality is not implemented.")
 }
 
+// PreconditionFailedError creates a new S3 error with a standard
+// PreconditionFailed S3 code.
+func PreconditionFailedError(r *http.Request) *Error {
+	return NewError(r, http.StatusPreconditionFailed, "PreconditionFailed", "At least one of the preconditions you specified did not hold.")
+}
+
 // RequestTimeoutError creates a new S3 error with a standard RequestTimeout
 // S3 code.
 func RequestTimeoutError(r *http.Request) *Error {
