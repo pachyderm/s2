@@ -141,6 +141,12 @@ func InvalidPartOrderError(w http.ResponseWriter, r *http.Request) *Error {
 	return NewError(r, http.StatusBadRequest, "InvalidPartOrder", "The list of parts was not in ascending order. Parts list must be specified in order by part number.")
 }
 
+// InvalidRequestError creates a new S3 error with a standard
+// InvalidRequest S3 code.
+func InvalidRequestError(r *http.Request, message string) *Error {
+	return NewError(r, http.StatusBadRequest, "InvalidRequest", message)
+}
+
 // MalformedXMLError creates a new S3 error with a standard MalformedXML S3
 // code.
 func MalformedXMLError(r *http.Request) *Error {

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 	"strings"
+	"net/url"
 
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
@@ -122,22 +123,54 @@ func (h *objectHandler) copy(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	destBucket := vars["bucket"]
 	destKey := vars["key"]
-	versionId := r.FormValue("versionId")
 
-	srcParts := strings.SplitN(r.Header.Get("x-amz-copy-source"), "/", 3)
-	if len(srcParts) != 3 || srcParts[0] != "" {
+	var srcBucket string
+	var srcKey string
+	srcURL, err := url.Parse(r.Header.Get("x-amz-copy-source"))
+	if err != nil {
 		WriteError(h.logger, w, r, InvalidArgumentError(r))
 		return
 	}
-	srcBucket := srcParts[1]
-	srcKey := srcParts[2]
+	srcPath := strings.SplitN(srcURL.Path, "/", 3)
+	if len(srcPath) == 2 {
+		srcBucket = srcPath[0]
+		srcKey = srcPath[1]
+	} else if len(srcPath) == 3 {
+		if srcPath[0] != "" {
+			WriteError(h.logger, w, r, InvalidArgumentError(r))
+			return
+		}
+		srcBucket = srcPath[1]
+		srcKey = srcPath[2]
+	} else {
+		WriteError(h.logger, w, r, InvalidArgumentError(r))
+		return
+	}
+	srcVersionID := srcURL.Query().Get("versionId")
+
+	if srcBucket == "" {
+		// TODO: is this the right error?
+		WriteError(h.logger, w, r, InvalidBucketNameError(r))
+		return
+	}
+	if srcKey == "" {
+		WriteError(h.logger, w, r, NoSuchKeyError(r))
+		return
+	}
+	if srcBucket == destBucket && srcKey == destKey && srcVersionID == "" {
+		// If we ever add support for object metadata, this error should not
+		// trigger in the case where metadata is changed, since it is a valid
+		// way to alter the metadata of an object
+		WriteError(h.logger, w, r, InvalidRequestError(r, "source and destination are the same"))
+		return
+	}
 
 	ifMatch := r.Header.Get("x-amz-copy-source-if-match")
 	ifNoneMatch := r.Header.Get("x-amz-copy-source-if-none-match")
 	ifUnmodifiedSince := r.Header.Get("x-amz-copy-source-if-unmodified-since")
 	ifModifiedSince := r.Header.Get("x-amz-copy-source-if-modified-since")
 
-	getResult, err := h.controller.GetObject(r, srcBucket, srcKey, versionId)
+	getResult, err := h.controller.GetObject(r, srcBucket, srcKey, srcVersionID)
 	if err != nil {
 		WriteError(h.logger, w, r, err)
 		return
@@ -171,7 +204,7 @@ func (h *objectHandler) copy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	destVersionId, err := h.controller.CopyObject(r, srcBucket, srcKey, getResult, destBucket, destKey)
+	destVersionID, err := h.controller.CopyObject(r, srcBucket, srcKey, getResult, destBucket, destKey)
 	if err != nil {
 		WriteError(h.logger, w, r, err)
 		return
@@ -181,8 +214,8 @@ func (h *objectHandler) copy(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("x-amz-copy-source-version-id", getResult.Version)
 	}
 
-	if destVersionId != "" {
-		w.Header().Set("x-amz-version-id", versionId)
+	if destVersionID != "" {
+		w.Header().Set("x-amz-version-id", srcVersionID)
 	}
 
 	marshallable := struct {
