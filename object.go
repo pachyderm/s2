@@ -146,7 +146,6 @@ func (h *objectHandler) copy(w http.ResponseWriter, r *http.Request) {
 	srcVersionID := srcURL.Query().Get("versionId")
 
 	if srcBucket == "" {
-		// TODO: is this the right error?
 		WriteError(h.logger, w, r, InvalidBucketNameError(r))
 		return
 	}
@@ -173,7 +172,6 @@ func (h *objectHandler) copy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if getResult.DeleteMarker {
-		// TODO: is this the right error?
 		WriteError(h.logger, w, r, NoSuchKeyError(r))
 		return
 	}
