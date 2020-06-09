@@ -1,10 +1,10 @@
 package s2
 
 import (
-	"net/textproto"
 	"net/http"
-	"time"
+	"net/textproto"
 	"strings"
+	"time"
 )
 
 func checkIfMatch(im string, etag string) bool {
