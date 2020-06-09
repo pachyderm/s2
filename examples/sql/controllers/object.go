@@ -12,14 +12,6 @@ import (
 	"github.com/pachyderm/s2/examples/sql/util"
 )
 
-type CloseableByteReader struct {
-	*bytes.Reader
-}
-
-func (b *CloseableByteReader) Close() error {
-	return nil
-}
-
 func (c *Controller) GetObject(r *http.Request, name, key, version string) (*s2.GetObjectResult, error) {
 	c.logger.Tracef("GetObject: name=%+v, key=%+v, version=%+v", name, key, version)
 
@@ -61,9 +53,7 @@ func (c *Controller) GetObject(r *http.Request, name, key, version string) (*s2.
 			}
 		} else {
 			result.ETag = object.ETag
-			result.Content = &CloseableByteReader{
-				bytes.NewReader(object.Content),
-			}
+			result.Content = bytes.NewReader(object.Content)
 		}
 
 		return nil

@@ -4,9 +4,9 @@ import (
 	"encoding/xml"
 	"io"
 	"net/http"
-	"time"
-	"strings"
 	"net/url"
+	"strings"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
@@ -26,7 +26,7 @@ type GetObjectResult struct {
 	// ModTime specifies when the object was modified.
 	ModTime time.Time
 	// Content is the contents of the object.
-	Content ReadSeekCloser
+	Content io.ReadSeeker
 }
 
 // PutObjectResult is a response from a PutObject call
@@ -96,9 +96,6 @@ func (h *objectHandler) get(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		WriteError(h.logger, w, r, err)
 		return
-	}
-	if result.Content != nil {
-		defer result.Content.Close()
 	}
 
 	if result.ETag != "" {
@@ -174,9 +171,6 @@ func (h *objectHandler) copy(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		WriteError(h.logger, w, r, err)
 		return
-	}
-	if getResult.Content != nil {
-		defer getResult.Content.Close()
 	}
 	if getResult.DeleteMarker {
 		// TODO: is this the right error?
