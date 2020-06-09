@@ -1,5 +1,9 @@
 package s2
 
+// This is largely lifted from go's stdlib net/http, but modified to be
+// simpler and to work with amazon's proprietary `x-amz-`-prefixed
+// conditional matching headers, rather than the standard HTTP ones
+
 import (
 	"net/http"
 	"net/textproto"
