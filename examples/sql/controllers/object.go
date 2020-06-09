@@ -62,55 +62,22 @@ func (c *Controller) GetObject(r *http.Request, name, key, version string) (*s2.
 	return &result, err
 }
 
+func (c *Controller) CopyObject(r *http.Request, srcBucket, srcKey string, obj *s2.GetObjectResult, destBucket, destKey string) (string, error) {
+	c.logger.Tracef("CopyObject: srcBucket=%+v, srcKey=%+v, obj=%+v, destBucket=%+v, destKey=%+v", srcBucket, srcKey, obj, destBucket, destKey)
+	version, _, err := c.putObject(r, destBucket, destKey, obj.Content)
+	return version, err
+}
+
 func (c *Controller) PutObject(r *http.Request, name, key string, reader io.Reader) (*s2.PutObjectResult, error) {
 	c.logger.Tracef("PutObject: name=%+v, key=%+v", name, key)
-
-	bytes, err := ioutil.ReadAll(reader)
+	version, etag, err := c.putObject(r, name, key, reader)
 	if err != nil {
 		return nil, err
 	}
-
-	result := s2.PutObjectResult{}
-
-	err = c.transaction(func(tx *gorm.DB) error {
-		bucket, err := models.GetBucket(tx, name)
-		if err != nil {
-			if gorm.IsRecordNotFoundError(err) {
-				return s2.NoSuchBucketError(r)
-			}
-			return err
-		}
-
-		if bucket.Versioning == s2.VersioningEnabled {
-			object, err := models.CreateObjectContent(tx, bucket.ID, key, util.RandomString(10), bytes)
-			if err != nil {
-				return err
-			}
-
-			result.Version = object.Version
-			result.ETag = object.ETag
-		} else {
-			object, err := models.GetLatestObject(tx, bucket.ID, key)
-			if err != nil && !gorm.IsRecordNotFoundError(err) {
-				return err
-			}
-			if !gorm.IsRecordNotFoundError(err) {
-				if err = tx.Delete(&object).Error; err != nil {
-					return err
-				}
-			}
-
-			object, err = models.CreateObjectContent(tx, bucket.ID, key, "null", bytes)
-			if err != nil {
-				return err
-			}
-
-			result.ETag = object.ETag
-		}
-		return nil
-	})
-
-	return &result, err
+	return &s2.PutObjectResult{
+		Version: version,
+		ETag:    etag,
+	}, nil
 }
 
 func (c *Controller) DeleteObject(r *http.Request, name, key, version string) (*s2.DeleteObjectResult, error) {
@@ -165,4 +132,54 @@ func (c *Controller) DeleteObject(r *http.Request, name, key, version string) (*
 	})
 
 	return &result, err
+}
+
+func (c *Controller) putObject(r *http.Request, name, key string, reader io.Reader) (string, string, error) {
+	bytes, err := ioutil.ReadAll(reader)
+	if err != nil {
+		return "", "", err
+	}
+
+	version := ""
+	etag := ""
+
+	err = c.transaction(func(tx *gorm.DB) error {
+		bucket, err := models.GetBucket(tx, name)
+		if err != nil {
+			if gorm.IsRecordNotFoundError(err) {
+				return s2.NoSuchBucketError(r)
+			}
+			return err
+		}
+
+		if bucket.Versioning == s2.VersioningEnabled {
+			object, err := models.CreateObjectContent(tx, bucket.ID, key, util.RandomString(10), bytes)
+			if err != nil {
+				return err
+			}
+
+			version = object.Version
+			etag = object.ETag
+		} else {
+			object, err := models.GetLatestObject(tx, bucket.ID, key)
+			if err != nil && !gorm.IsRecordNotFoundError(err) {
+				return err
+			}
+			if !gorm.IsRecordNotFoundError(err) {
+				if err = tx.Delete(&object).Error; err != nil {
+					return err
+				}
+			}
+
+			object, err = models.CreateObjectContent(tx, bucket.ID, key, "null", bytes)
+			if err != nil {
+				return err
+			}
+
+			etag = object.ETag
+		}
+		return nil
+	})
+
+	return version, etag, err
 }

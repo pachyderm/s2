@@ -1,137 +1,16 @@
 package s2
 
 import (
-	"bufio"
-	"crypto/sha256"
 	"encoding/xml"
-	"errors"
-	"fmt"
 	"io"
 	"net/http"
-	"regexp"
-	"strconv"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 )
-
-var (
-	// chunkValidator is a regexp for validating a chunk "header" in the
-	// request body of a multi-chunk upload
-	chunkValidator = regexp.MustCompile(`^([0-9a-fA-F]+);chunk-signature=([0-9a-fA-F]+)`)
-
-	// InvalidChunk is an error returned when reading a multi-chunk object
-	// upload that contains an invalid chunk header or body
-	InvalidChunk = errors.New("invalid chunk")
-)
-
-// Reads a multi-chunk upload body
-type chunkedReader struct {
-	body      io.ReadCloser
-	lastChunk []byte
-	bufBody   *bufio.Reader
-
-	signingKey    []byte
-	lastSignature string
-	timestamp     string
-	date          string
-	region        string
-}
-
-func newChunkedReader(body io.ReadCloser, signingKey []byte, seedSignature, timestamp, date, region string) *chunkedReader {
-	return &chunkedReader{
-		body:      body,
-		lastChunk: nil,
-		bufBody:   bufio.NewReader(body),
-
-		signingKey:    signingKey,
-		lastSignature: seedSignature,
-		timestamp:     timestamp,
-		date:          date,
-		region:        region,
-	}
-}
-
-func (c *chunkedReader) Read(p []byte) (n int, err error) {
-	if c.lastChunk == nil {
-		if err := c.readChunk(); err != nil {
-			return 0, err
-		}
-	}
-
-	n = copy(p, c.lastChunk)
-
-	if n == len(c.lastChunk) {
-		c.lastChunk = nil
-	} else {
-		c.lastChunk = c.lastChunk[n:]
-	}
-
-	return n, nil
-}
-
-func (c *chunkedReader) readChunk() error {
-	// step 1: read the chunk header
-	line, err := c.bufBody.ReadString('\n')
-	if err != nil {
-		if err == io.EOF {
-			return err
-		}
-		return InvalidChunk
-	}
-
-	match := chunkValidator.FindStringSubmatch(line)
-	if len(match) == 0 {
-		return InvalidChunk
-	}
-
-	chunkLengthHexStr := match[1]
-	chunkSignature := match[2]
-
-	chunkLength, err := strconv.ParseUint(chunkLengthHexStr, 16, 32)
-	if err != nil {
-		return InvalidChunk
-	}
-
-	// step 2: read the chunk body
-	chunk := make([]byte, chunkLength)
-	_, err = io.ReadFull(c.bufBody, chunk)
-	if err != nil {
-		return InvalidChunk
-	}
-
-	// step 3: read the trailer
-	trailer := make([]byte, 2)
-	_, err = io.ReadFull(c.bufBody, trailer)
-	if err != nil || trailer[0] != '\r' || trailer[1] != '\n' {
-		return InvalidChunk
-	}
-
-	// step 4: construct the string to sign
-	stringToSign := fmt.Sprintf(
-		"AWS4-HMAC-SHA256-PAYLOAD\n%s\n%s/%s/s3/aws4_request\n%s\ne3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\n%x",
-		c.timestamp,
-		c.date,
-		c.region,
-		c.lastSignature,
-		sha256.Sum256(chunk),
-	)
-
-	// step 5: calculate & verify the signature
-	signature := hmacSHA256(c.signingKey, stringToSign)
-	if chunkSignature != fmt.Sprintf("%x", signature) {
-		return InvalidChunk
-	}
-
-	c.lastChunk = chunk
-	c.lastSignature = chunkSignature
-	return nil
-}
-
-func (c *chunkedReader) Close() error {
-	return c.body.Close()
-}
 
 // GetObjectResult is a response from a GetObject call
 type GetObjectResult struct {
@@ -174,6 +53,8 @@ type DeleteObjectResult struct {
 type ObjectController interface {
 	// GetObject gets an object
 	GetObject(r *http.Request, bucket, key, version string) (*GetObjectResult, error)
+	// CopyObject copies an object
+	CopyObject(r *http.Request, srcBucket, srcKey string, getResult *GetObjectResult, destBucket, destKey string) (string, error)
 	// PutObject sets an object
 	PutObject(r *http.Request, bucket, key string, reader io.Reader) (*PutObjectResult, error)
 	// DeleteObject deletes an object
@@ -186,6 +67,10 @@ type unimplementedObjectController struct{}
 
 func (c unimplementedObjectController) GetObject(r *http.Request, bucket, key, version string) (*GetObjectResult, error) {
 	return nil, NotImplementedError(r)
+}
+
+func (c unimplementedObjectController) CopyObject(r *http.Request, srcBucket, srcKey string, getResult *GetObjectResult, destBucket, destKey string) (string, error) {
+	return "", NotImplementedError(r)
 }
 
 func (c unimplementedObjectController) PutObject(r *http.Request, bucket, key string, reader io.Reader) (*PutObjectResult, error) {
@@ -227,6 +112,112 @@ func (h *objectHandler) get(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.ServeContent(w, r, key, result.ModTime, result.Content)
+}
+
+func (h *objectHandler) copy(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	destBucket := vars["bucket"]
+	destKey := vars["key"]
+
+	var srcBucket string
+	var srcKey string
+	srcURL, err := url.Parse(r.Header.Get("x-amz-copy-source"))
+	if err != nil {
+		WriteError(h.logger, w, r, InvalidArgumentError(r))
+		return
+	}
+	srcPath := strings.SplitN(srcURL.Path, "/", 3)
+	if len(srcPath) == 2 {
+		srcBucket = srcPath[0]
+		srcKey = srcPath[1]
+	} else if len(srcPath) == 3 {
+		if srcPath[0] != "" {
+			WriteError(h.logger, w, r, InvalidArgumentError(r))
+			return
+		}
+		srcBucket = srcPath[1]
+		srcKey = srcPath[2]
+	} else {
+		WriteError(h.logger, w, r, InvalidArgumentError(r))
+		return
+	}
+	srcVersionID := srcURL.Query().Get("versionId")
+
+	if srcBucket == "" {
+		WriteError(h.logger, w, r, InvalidBucketNameError(r))
+		return
+	}
+	if srcKey == "" {
+		WriteError(h.logger, w, r, NoSuchKeyError(r))
+		return
+	}
+	if srcBucket == destBucket && srcKey == destKey && srcVersionID == "" {
+		// If we ever add support for object metadata, this error should not
+		// trigger in the case where metadata is changed, since it is a valid
+		// way to alter the metadata of an object
+		WriteError(h.logger, w, r, InvalidRequestError(r, "source and destination are the same"))
+		return
+	}
+
+	ifMatch := r.Header.Get("x-amz-copy-source-if-match")
+	ifNoneMatch := r.Header.Get("x-amz-copy-source-if-none-match")
+	ifUnmodifiedSince := r.Header.Get("x-amz-copy-source-if-unmodified-since")
+	ifModifiedSince := r.Header.Get("x-amz-copy-source-if-modified-since")
+
+	getResult, err := h.controller.GetObject(r, srcBucket, srcKey, srcVersionID)
+	if err != nil {
+		WriteError(h.logger, w, r, err)
+		return
+	}
+	if getResult.DeleteMarker {
+		WriteError(h.logger, w, r, NoSuchKeyError(r))
+		return
+	}
+
+	if !checkIfMatch(ifMatch, getResult.ETag) {
+		WriteError(h.logger, w, r, PreconditionFailedError(r))
+		return
+	}
+
+	if !checkIfNoneMatch(ifNoneMatch, getResult.ETag) {
+		WriteError(h.logger, w, r, PreconditionFailedError(r))
+		return
+	}
+
+	if !checkIfUnmodifiedSince(ifUnmodifiedSince, getResult.ModTime) {
+		WriteError(h.logger, w, r, PreconditionFailedError(r))
+		return
+	}
+
+	if !checkIfModifiedSince(ifModifiedSince, getResult.ModTime) {
+		WriteError(h.logger, w, r, PreconditionFailedError(r))
+		return
+	}
+
+	destVersionID, err := h.controller.CopyObject(r, srcBucket, srcKey, getResult, destBucket, destKey)
+	if err != nil {
+		WriteError(h.logger, w, r, err)
+		return
+	}
+
+	if getResult.Version != "" {
+		w.Header().Set("x-amz-copy-source-version-id", getResult.Version)
+	}
+
+	if destVersionID != "" {
+		w.Header().Set("x-amz-version-id", srcVersionID)
+	}
+
+	marshallable := struct {
+		XMLName      xml.Name  `xml:"http://s3.amazonaws.com/doc/2006-03-01/ CopyObjectResult"`
+		LastModified time.Time `xml:"LastModified"`
+		ETag         string    `xml:"ETag"`
+	}{
+		LastModified: getResult.ModTime,
+		ETag:         getResult.ETag,
+	}
+
+	writeXML(h.logger, w, r, http.StatusOK, marshallable)
 }
 
 func (h *objectHandler) put(w http.ResponseWriter, r *http.Request) {
