@@ -189,7 +189,8 @@ func (h *bucketHandler) get(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	bucket := vars["bucket"]
 
-	maxKeys, err := intFormValue(r, "max-keys", 0, defaultMaxKeys, defaultMaxKeys)
+	// hadoop's S3 client could make requests with max-keys=5000
+	maxKeys, err := intFormValue(r, "max-keys", 0, 5000, defaultMaxKeys)
 	if err != nil {
 		WriteError(h.logger, w, r, err)
 		return
