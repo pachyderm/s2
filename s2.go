@@ -371,6 +371,22 @@ func (h *S2) authMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// etagMiddleware iterates over a requests headers and quotes unquoted Entity Tags headers.
+// ref: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/ETag
+func (h *S2) etagMiddleware(next http.Handler) http.Handler {
+	etagHeaders := [3]string{"ETag", "If-Match", "If-None-Match"}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h.logger.Debugf("Headers: %s", r.Header)
+		for _, key := range etagHeaders {
+			value := r.Header.Get(key)
+			if value != "" {
+				r.Header.Set(key, addETagQuotes(value))
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // bodyReadingMiddleware creates a middleware for reading request bodies
 func (h *S2) bodyReadingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -488,6 +504,7 @@ func (h *S2) Router() *mux.Router {
 	}
 
 	router := mux.NewRouter()
+	router.Use(h.etagMiddleware)
 	router.Use(h.requestIDMiddleware)
 	if h.Auth != nil {
 		router.Use(h.authMiddleware)
