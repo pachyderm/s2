@@ -504,11 +504,11 @@ func (h *S2) Router() *mux.Router {
 	}
 
 	router := mux.NewRouter()
-	router.Use(h.etagMiddleware)
 	router.Use(h.requestIDMiddleware)
 	if h.Auth != nil {
 		router.Use(h.authMiddleware)
 	}
+	router.Use(h.etagMiddleware)
 	router.Use(h.bodyReadingMiddleware)
 
 	router.Path(`/`).Methods("GET", "HEAD").HandlerFunc(serviceHandler.get)
