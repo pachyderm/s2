@@ -5,6 +5,7 @@ from pathlib import Path
 
 import boto3
 import minio
+import requests
 import urllib3
 
 ADDRESS = os.environ["S2_HOST_ADDRESS"]
@@ -70,16 +71,8 @@ def test_minio_lib():
         res = client.list_objects(bucket_name)
         assert set((o.object_name, o.size) for o in res) == EXPECTED_KEYS
 
-        for (object_name, file) in (("small", SMALL_FILE), ("large", LARGE_FILE)):
-            object = client.stat_object(bucket_name, object_name)
-            response = client.get_object(bucket_name, object_name)
-            assert response.data == file.read_bytes()
-            try:
-                client.get_object(bucket_name, object_name, request_headers={"If-None-Match": object.etag})
-            except minio.InvalidResponseError:
-                pass
-            else:
-                raise ValueError(f"If-None-Match on etag failed for {object_name}")
+        assert client.get_object(bucket_name, "small").data == SMALL_FILE.read_bytes()
+        assert client.get_object(bucket_name, "large").data == LARGE_FILE.read_bytes()
 
     finally:
         if client.bucket_exists(bucket_name):
@@ -87,3 +80,32 @@ def test_minio_lib():
                     client.remove_object(bucket_name, object.object_name)
             if client.bucket_exists(bucket_name):
                 client.remove_bucket(bucket_name)
+
+
+def test_unquoted_etags():
+    """Test that use of unquoted values in etag headers, such as "If-None-Match",
+    is corrected and handled by the s2 library.
+    """
+    url = f"{SCHEME}://{NETLOC}"
+    bucket_name = "test-etag-quoting"
+    file_name = "greeting.txt"
+
+    resp = requests.put(f"{url}/{bucket_name}")
+    assert resp.status_code == 200
+
+    response = requests.put(f"{url}/{bucket_name}/{file_name}", data="hello")
+    assert resp.status_code == 200
+
+    response = requests.head(f"{url}/{bucket_name}/{file_name}")
+    assert resp.status_code == 200
+
+    etag = response.headers["Etag"]
+    if etag and etag.startswith('"'):
+        etag = etag[1:]
+    if etag and etag.endswith('"'):
+        etag = etag[:-1]
+    response = requests.get(f"{url}/{bucket_name}/{file_name}", headers={"If-None-Match": etag})
+    assert response.status_code == 304, "expected 304 Not Modified"
+
+    requests.delete(f"{url}/{bucket_name}/{file_name}")
+    requests.delete(f"{url}/{bucket_name}")
