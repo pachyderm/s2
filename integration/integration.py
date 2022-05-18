@@ -32,7 +32,7 @@ def main():
         with open(os.path.join(TESTDATA, "small.txt"), "w") as f:
             f.write("x")
         with open(os.path.join(TESTDATA, "large.txt"), "w") as f:
-            f.write("x" * (65 * 1024 * 1024))
+            f.write("x" * (10 * 1024 * 1024))
 
     url = urlparse(args.address)
 
