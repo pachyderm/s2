@@ -49,8 +49,8 @@ def test_boto_lib():
 
 def test_minio_lib():
     pool_manager = urllib3.PoolManager(
-        timeout=120.0,
-        retries=urllib3.Retry(total=10),
+        timeout=30.0,
+        retries=urllib3.Retry(total=3),
     )
 
     client = minio.Minio(
